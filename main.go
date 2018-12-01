@@ -22,6 +22,7 @@ var redisPassword = flag.String("redis-password", "", "the password for redis")
 var wartName = flag.String("wart-name", "noname", "the unique name of this wart")
 var scriptList = flag.String("scripts", "", "comma delimited list of scripts to run")
 var criticalLoad = flag.Float64("max-cpu", 1, "the load before unhealthy")
+var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 
 var client *redis.Client
 var clusterStatuses []string
@@ -33,7 +34,7 @@ func main() {
 	fmt.Println("Wart started.")
 	err := Init()
 	if client != nil {
-		defer client.Set("Status:"+*wartName, "offline", 0)
+		defer client.Set("Status:"+*wartName, "offline", 100)
 	}
 
 	defer fmt.Println("Wart stopped.")
@@ -43,10 +44,10 @@ func main() {
 		fmt.Println(pong, err)
 
 		if err == nil {
+			go checkHealth()
 			for true {
-				checkHealth()
 				checkStatuses()
-				time.Sleep(1000)
+				time.Sleep(time.Second)
 			}
 		}
 	} else {
@@ -69,7 +70,7 @@ func Init() error {
 		Password: *redisPassword, // no password set
 		DB:       0,              // use default DB
 	})
-	client.Set("Status:"+*wartName, "online", 0)
+	client.Set("Status:"+*wartName, "online", *healthInterval*time.Second)
 
 	clusterStatuses = client.Keys("Status:*").Val()
 
@@ -103,28 +104,33 @@ func checkHealth() {
 	//check to see if wart is healthy
 	//If not figure out what it should give up
 	//For each thing that should be given up compress code and put in redis
-	crit := false
+	for true {
+		fmt.Println("Health Check")
+		crit := false
 
-	c, _ := load.Avg()
-	if c.Load1 > *criticalLoad {
-		crit = true
-		fmt.Printf("Load Critical: %v\n", c.Load1)
-	}
-
-	if crit {
-		isCrit = true
-		client.Set("Status:"+*wartName, "crit", 0)
-		fmt.Println("I'm unhealthy!")
-		giveUpScripts := whatToGiveUp()
-
-		for k, v := range giveUpScripts {
-			fmt.Println("Giving up: ", k)
-			client.Set("UpForGrabs:"+*wartName+":"+k, v, 0)
+		c, _ := load.Avg()
+		fmt.Println("Current Load:", c.Load1)
+		if c.Load1 > *criticalLoad {
+			crit = true
+			fmt.Printf("Load Critical: %v\n", c.Load1)
 		}
-	}
 
-	if crit == false && isCrit == true {
-		client.Set("Status:"+*wartName, "online", 0)
+		if crit {
+			isCrit = true
+			client.Set("Status:"+*wartName, "crit", *healthInterval*time.Second)
+			fmt.Println("I'm unhealthy!")
+			giveUpScripts := whatToGiveUp()
+
+			for k, v := range giveUpScripts {
+				fmt.Println("Giving up: ", k)
+				client.Set("UpForGrabs:"+*wartName+":"+k, v, 0)
+			}
+		}
+
+		if crit == false {
+			client.Set("Status:"+*wartName, "online", *healthInterval*time.Second)
+		}
+		time.Sleep(*healthInterval * time.Second)
 	}
 }
 

@@ -12,4 +12,10 @@ Checks health based on CPU load.
   -If over threshold goes into crit status.
   -If in crit status it figures out what to give up based on what scripts are running and puts them into redis.
 Checks status of other warts.
-  -If any are in crit status and it is not in crit status it checks jobs. 
+  -If any are in crit status and it is not in crit status it checks jobs.
+
+
+  Setup Instructions:
+  Clone
+  Run `go get`
+  Run `go run *.go --redis-address=<address> --redis-password=<password --scripts=examples/main.txt,examples/hello.txt --max-cpu=2 --wart-name=wart1`
