@@ -1,4 +1,9 @@
 # redis-wart
+W - Widely
+A - Accessible
+R - Redis
+T - Threading
+S - System  
 A simple interpreter designed to process data sitting in redis.
 
 A wart is a single server instance running any number of scripts.  It connects directly to redis and
@@ -19,3 +24,19 @@ Checks status of other warts.
   Clone
   Run `go get`
   Run `go run *.go --redis-address=<address> --redis-password=<password --scripts=examples/main.txt,examples/hello.txt --max-cpu=2 --wart-name=wart1`
+
+
+Redis keys:
+<cluster>:Threads:<script>:Source - Source of thread
+<cluster>:Threads:<script>:State - running/stopped/ no key
+<cluster>:Threads:<script>:Status - enabled/disabled
+<cluster>:Warts:<wart>:Status - healthy/unhealthy/crit
+
+
+Registering scripts
+
+
+
+Needs done first - Register scripts wart is running in redis.
+If a wart disapears and its scripts are still registered pick up scripts.
+Maybe make give up scripts just keys to the registered scripts.
