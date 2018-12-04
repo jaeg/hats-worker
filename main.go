@@ -14,18 +14,20 @@ import (
 )
 
 var redisAddr = flag.String("redis-address", "", "the address for the main redis")
-var cluster = flag.String("cluster", "default", "name of cluster")
 var redisPassword = flag.String("redis-password", "", "the password for redis")
+var cluster = flag.String("cluster-name", "default", "name of cluster")
 var wartName = flag.String("wart-name", "noname", "the unique name of this wart")
 var scriptList = flag.String("scripts", "", "comma delimited list of scripts to run")
-var criticalLoad = flag.Float64("max-cpu", 1, "the load before unhealthy")
+var cpuThreshold = flag.Float64("cpu-threshold", 1, "the load before unhealthy")
+var memThreshold = flag.Float64("mem-threshold", 1, "max memory usage before unhealthy")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 var runNow = flag.Bool("run-now", false, "Run loaded scripts immediately.")
+
 var secondsTillDead = 1
 var client *redis.Client
 var clusterStatuses []string
 
-var isCrit = false
+var healthy = true
 
 func main() {
 	fmt.Println("Wart started.")
@@ -108,13 +110,13 @@ func checkHealth() {
 
 		c, _ := load.Avg()
 		fmt.Println("Current Load:", c.Load1)
-		if c.Load1 > *criticalLoad {
+		if c.Load1 > *cpuThreshold {
 			crit = true
 			fmt.Printf("Load Critical: %v\n", c.Load1)
 		}
 
 		if crit {
-			isCrit = true
+			healthy = false
 			client.Set("Status:"+*wartName, "crit", *healthInterval*time.Second)
 			fmt.Println("I'm unhealthy!")
 		}
@@ -136,7 +138,7 @@ func takeThread(key string) {
 }
 func thread(key string, source string) {
 	fmt.Println("Thread started: " + key)
-	for !isCrit {
+	for healthy {
 		client.HSet(key, "Heartbeat", time.Now().UnixNano())
 
 		//Get status and stop if disabled.
