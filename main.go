@@ -13,11 +13,6 @@ import (
 	"github.com/shirou/gopsutil/load"
 )
 
-type Script struct {
-	Source  string
-	Running bool
-}
-
 var redisAddr = flag.String("redis-address", "", "the address for the main redis")
 var cluster = flag.String("cluster", "default", "name of cluster")
 var redisPassword = flag.String("redis-password", "", "the password for redis")
@@ -25,11 +20,10 @@ var wartName = flag.String("wart-name", "noname", "the unique name of this wart"
 var scriptList = flag.String("scripts", "", "comma delimited list of scripts to run")
 var criticalLoad = flag.Float64("max-cpu", 1, "the load before unhealthy")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
-
+var runNow = flag.Bool("run-now", false, "Run loaded scripts immediately.")
 var secondsTillDead = 1
 var client *redis.Client
 var clusterStatuses []string
-var scripts map[string]*Script
 
 var isCrit = false
 
@@ -62,8 +56,6 @@ func main() {
 func Init() error {
 	flag.Parse()
 
-	scripts = make(map[string]*Script)
-
 	if *redisAddr == "" {
 		return errors.New("No redis address provided.")
 	}
@@ -79,16 +71,27 @@ func Init() error {
 		scriptArray := strings.Split(*scriptList, ",")
 		for i := range scriptArray {
 			scriptName := scriptArray[i]
+			fmt.Println("Loading " + scriptName)
 			fBytes, err := ioutil.ReadFile(scriptName)
 			if err != nil {
 				return err
 			}
-			client.Set(*cluster+":Threads:"+scriptName+":Source", string(fBytes), 0)
-			client.Set(*cluster+":Threads:"+scriptName+":State", "running", 0)
-			client.Set(*cluster+":Threads:"+scriptName+":Status", "enabled", 0)
-			client.Set(*cluster+":Threads:"+scriptName, time.Now().UnixNano(), 0)
+			client.HSet(*cluster+":Threads:"+scriptName, "Source", string(fBytes))
 
-			go job(scriptName, string(fBytes))
+			client.HSet(*cluster+":Threads:"+scriptName, "Status", "enabled")
+
+			if *runNow {
+				client.HSet(*cluster+":Threads:"+scriptName, "State", "running")
+				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", time.Now().UnixNano())
+				client.HSet(*cluster+":Threads:"+scriptName, "Owner", "")
+				go thread(*cluster+":Threads:"+scriptName, string(fBytes))
+			} else {
+				fmt.Println("Initial:" + *cluster + ":Threads:" + scriptName)
+				client.HSet(*cluster+":Threads:"+scriptName, "State", "stopped")
+				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", 0)
+				client.HSet(*cluster+":Threads:"+scriptName, "Owner", *wartName)
+			}
+
 		}
 	}
 
@@ -123,38 +126,60 @@ func checkHealth() {
 	}
 }
 
-func job(name string, source string) {
-	shouldStop := false
-	for !shouldStop {
-		client.Set(*cluster+":Threads:"+name, time.Now().UnixNano(), 0)
-		time.Sleep(time.Second * 3)
-	}
+func takeThread(key string) {
+	fmt.Println("Taking thread: " + key)
+	source := client.HGet(key, "Source").Val()
+	client.HSet(key, "State", "running")
+	client.HSet(key, "Heartbeat", time.Now().UnixNano())
+	client.HSet(key, "Owner", *wartName)
+	go thread(key, source)
 }
+func thread(key string, source string) {
+	fmt.Println("Thread started: " + key)
+	for !isCrit {
+		client.HSet(key, "Heartbeat", time.Now().UnixNano())
 
-func whatToGiveUp() map[string]string {
-	//Needs to figure out what script it can stop and give to another server.
-	giveUpScripts := make(map[string]string)
-
-	for k, v := range scripts {
-		if v.Running == false {
-			giveUpScripts[k] = v.Source
-			delete(scripts, k)
+		//Get status and stop if disabled.
+		status := client.HGet(key, "Status")
+		owner := client.HGet(key, "Owner")
+		if status.Val() == "disabled" {
+			fmt.Println("Disabled:" + key)
+			client.HSet(key, "State", "stopped")
+			return
 		}
+
+		if owner.Val() != *wartName {
+			return
+		}
+
+		//Run script here
+
+		time.Sleep(time.Second * 1)
 	}
-	return giveUpScripts
 }
 
 func checkThreads() {
 	threads := client.Keys(*cluster + ":Threads:*").Val()
 	for i := range threads {
-		lastHeartbeatString := client.Get(threads[i]).Val()
-		lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
-		if err == nil {
-			fmt.Println("Working on: " + threads[i])
-			elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
-			fmt.Println(elapsed)
-			if int(elapsed.Seconds()) > secondsTillDead {
-				fmt.Println("Dead thread: " + threads[i])
+		fmt.Println(threads[i])
+		threadStatus := client.HGet(threads[i], "Status").Val()
+		if threadStatus != "disabled" {
+			threadState := client.HGet(threads[i], "State").Val()
+			if threadState == "stopped" {
+				takeThread(threads[i])
+				continue
+			}
+			//Check to see if thread is hung or fell over before its state was updated
+			lastHeartbeatString := client.HGet(threads[i], "Heartbeat").Val()
+			lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
+			if err == nil {
+				elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
+				fmt.Println(elapsed)
+				if int(elapsed.Seconds()) > secondsTillDead {
+					fmt.Println("Dead thread: " + threads[i])
+					//Take it.
+					takeThread(threads[i])
+				}
 			}
 		}
 	}
