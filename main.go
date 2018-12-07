@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"github.com/robertkrimen/otto"
 	"github.com/shirou/gopsutil/load"
 )
 
@@ -33,7 +34,7 @@ func main() {
 	fmt.Println("Wart started.")
 	err := Init()
 	if client != nil {
-		defer client.Set("Status:"+*wartName, "offline", 100)
+		defer client.HSet("Wart:"+*wartName, "Status", "offline")
 	}
 
 	defer fmt.Println("Wart stopped.")
@@ -43,9 +44,10 @@ func main() {
 		fmt.Println(pong, err)
 
 		if err == nil {
-			//go checkHealth()
+			go checkHealth()
 			for true {
 				checkThreads()
+				client.HSet("Wart:"+*wartName, "Heartbeat", time.Now().UnixNano())
 				time.Sleep(time.Second)
 			}
 		}
@@ -56,6 +58,7 @@ func main() {
 }
 
 func Init() error {
+	fmt.Println("Init")
 	flag.Parse()
 
 	if *redisAddr == "" {
@@ -67,7 +70,7 @@ func Init() error {
 		Password: *redisPassword, // no password set
 		DB:       0,              // use default DB
 	})
-	client.Set(*cluster+":Warts:"+*wartName+":Status", "online", *healthInterval*time.Second)
+	client.HSet("Wart:"+*wartName, "Status", "online")
 
 	if *scriptList != "" {
 		scriptArray := strings.Split(*scriptList, ",")
@@ -88,7 +91,6 @@ func Init() error {
 				client.HSet(*cluster+":Threads:"+scriptName, "Owner", "")
 				go thread(*cluster+":Threads:"+scriptName, string(fBytes))
 			} else {
-				fmt.Println("Initial:" + *cluster + ":Threads:" + scriptName)
 				client.HSet(*cluster+":Threads:"+scriptName, "State", "stopped")
 				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", 0)
 				client.HSet(*cluster+":Threads:"+scriptName, "Owner", *wartName)
@@ -117,12 +119,12 @@ func checkHealth() {
 
 		if crit {
 			healthy = false
-			client.Set("Status:"+*wartName, "crit", *healthInterval*time.Second)
+			client.HSet("Wart:"+*wartName, "Status", "critical")
 			fmt.Println("I'm unhealthy!")
 		}
 
 		if crit == false {
-			client.Set("Status:"+*wartName, "online", *healthInterval*time.Second)
+			client.HSet("Wart:"+*wartName, "Status", "normal")
 		}
 		time.Sleep(*healthInterval * time.Second)
 	}
@@ -138,7 +140,11 @@ func takeThread(key string) {
 }
 func thread(key string, source string) {
 	fmt.Println("Thread started: " + key)
-	for healthy {
+	shouldStop := false
+	vm := otto.New()
+	vm.Run(source)
+	vm.Run("if (init != undefined) {init()}")
+	for healthy && !shouldStop {
 		client.HSet(key, "Heartbeat", time.Now().UnixNano())
 
 		//Get status and stop if disabled.
@@ -147,42 +153,46 @@ func thread(key string, source string) {
 		if status.Val() == "disabled" {
 			fmt.Println("Disabled:" + key)
 			client.HSet(key, "State", "stopped")
-			return
+			shouldStop = true
+			continue
 		}
 
 		if owner.Val() != *wartName {
-			return
+			shouldStop = true
+			continue
 		}
 
-		//Run script here
+		vm.Run("if (main != undefined) {main()}")
 
 		time.Sleep(time.Second * 1)
 	}
+	client.HSet(key, "State", "stopped")
 }
 
 func checkThreads() {
-	threads := client.Keys(*cluster + ":Threads:*").Val()
-	for i := range threads {
-		fmt.Println(threads[i])
-		threadStatus := client.HGet(threads[i], "Status").Val()
-		if threadStatus != "disabled" {
-			threadState := client.HGet(threads[i], "State").Val()
-			if threadState == "stopped" {
-				takeThread(threads[i])
-				continue
-			}
-			//Check to see if thread is hung or fell over before its state was updated
-			lastHeartbeatString := client.HGet(threads[i], "Heartbeat").Val()
-			lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
-			if err == nil {
-				elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
-				fmt.Println(elapsed)
-				if int(elapsed.Seconds()) > secondsTillDead {
-					fmt.Println("Dead thread: " + threads[i])
-					//Take it.
+	if healthy {
+		threads := client.Keys(*cluster + ":Threads:*").Val()
+		for i := range threads {
+			threadStatus := client.HGet(threads[i], "Status").Val()
+			if threadStatus != "disabled" {
+				threadState := client.HGet(threads[i], "State").Val()
+				if threadState == "stopped" {
 					takeThread(threads[i])
+					continue
+				}
+				//Check to see if thread is hung or fell over before its state was updated
+				lastHeartbeatString := client.HGet(threads[i], "Heartbeat").Val()
+				lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
+				if err == nil {
+					elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
+					if int(elapsed.Seconds()) > secondsTillDead {
+						fmt.Println("Dead thread: " + threads[i])
+						//Take it.
+						takeThread(threads[i])
+					}
 				}
 			}
 		}
 	}
+
 }

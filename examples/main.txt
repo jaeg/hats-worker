@@ -1,1 +1,7 @@
-Main
+function init() {
+  console.log("Main init")
+}
+
+function main() {
+  console.log("I'm main")
+}
