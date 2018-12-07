@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-redis/redis"
 	"github.com/robertkrimen/otto"
+	_ "github.com/robertkrimen/otto/underscore"
 	"github.com/shirou/gopsutil/load"
 )
 
@@ -142,8 +143,24 @@ func thread(key string, source string) {
 	fmt.Println("Thread started: " + key)
 	shouldStop := false
 	vm := otto.New()
-	vm.Run(source)
-	vm.Run("if (init != undefined) {init()}")
+
+	//Get whole script in memory.
+	_, err := vm.Run(source)
+	if err != nil {
+		client.HSet(key, "State", "crashed")
+		client.HSet(key, "Status", "disabled")
+		fmt.Println(err)
+		return
+	}
+
+	//Run init script
+	_, err = vm.Run("if (init != undefined) {init()}")
+	if err != nil {
+		client.HSet(key, "State", "crashed")
+		client.HSet(key, "Status", "disabled")
+		fmt.Println(err)
+		return
+	}
 	for healthy && !shouldStop {
 		client.HSet(key, "Heartbeat", time.Now().UnixNano())
 
@@ -162,7 +179,14 @@ func thread(key string, source string) {
 			continue
 		}
 
-		vm.Run("if (main != undefined) {main()}")
+		_, err := vm.Run("if (main != undefined) {main()}")
+
+		if err != nil {
+			client.HSet(key, "State", "crashed")
+			client.HSet(key, "Status", "disabled")
+			fmt.Println(err)
+			return
+		}
 
 		time.Sleep(time.Second * 1)
 	}
