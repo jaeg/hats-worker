@@ -1,5 +1,9 @@
 function init() {
   console.log("Main init")
+  redis.Do("set","MainLoop","Hi")
+
+  var value = redis.Do("get","MainLoop")
+  console.log(value.String()[0])
 }
 
 function main() {

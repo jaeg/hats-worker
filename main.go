@@ -63,7 +63,7 @@ func Init() error {
 	flag.Parse()
 
 	if *redisAddr == "" {
-		return errors.New("No redis address provided.")
+		return errors.New("no redis address provided")
 	}
 
 	client = redis.NewClient(&redis.Options{
@@ -144,6 +144,9 @@ func thread(key string, source string) {
 	shouldStop := false
 	vm := otto.New()
 
+	vm.Set("redis", map[string]interface{}{
+		"Do": client.Do,
+	})
 	//Get whole script in memory.
 	_, err := vm.Run(source)
 	if err != nil {
