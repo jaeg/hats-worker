@@ -83,18 +83,17 @@ func Init() error {
 				return err
 			}
 			client.HSet(*cluster+":Threads:"+scriptName, "Source", string(fBytes))
-
 			client.HSet(*cluster+":Threads:"+scriptName, "Status", "enabled")
 
 			if *runNow {
 				client.HSet(*cluster+":Threads:"+scriptName, "State", "running")
 				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", time.Now().UnixNano())
-				client.HSet(*cluster+":Threads:"+scriptName, "Owner", "")
+				client.HSet(*cluster+":Threads:"+scriptName, "Owner", *wartName)
 				go thread(*cluster+":Threads:"+scriptName, string(fBytes))
 			} else {
 				client.HSet(*cluster+":Threads:"+scriptName, "State", "stopped")
 				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", 0)
-				client.HSet(*cluster+":Threads:"+scriptName, "Owner", *wartName)
+				client.HSet(*cluster+":Threads:"+scriptName, "Owner", "")
 			}
 
 		}
