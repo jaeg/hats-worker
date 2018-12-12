@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -146,6 +147,10 @@ func thread(key string, source string) {
 	vm.Set("redis", map[string]interface{}{
 		"Do": client.Do,
 	})
+
+	vm.Set("http", map[string]interface{}{
+		"Get": httpGet,
+	})
 	//Get whole script in memory.
 	_, err := vm.Run(source)
 	if err != nil {
@@ -221,4 +226,18 @@ func checkThreads() {
 		}
 	}
 
+}
+
+func httpGet(url string) map[string]interface{} {
+	resp, err := http.Get(url)
+	if err != nil {
+		return map[string]interface{}{"error": err}
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return map[string]interface{}{"error": err}
+	}
+
+	return map[string]interface{}{"body": string(body), "status": resp.StatusCode}
 }

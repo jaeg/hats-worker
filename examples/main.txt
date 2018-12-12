@@ -1,3 +1,6 @@
+var req = http.Get("http://httpbin.org/get")
+var body = JSON.parse(req.body)
+console.log(body.origin)
 function init() {
   console.log("Main init")
   redis.Do("set","MainLoop","Hi")
