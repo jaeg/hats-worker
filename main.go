@@ -133,6 +133,7 @@ func checkHealth() {
 			client.HSet("Wart:"+*wartName, "Status", "critical")
 			fmt.Println("I'm unhealthy!")
 		} else {
+			healthy = true
 			client.HSet("Wart:"+*wartName, "Status", "normal")
 		}
 

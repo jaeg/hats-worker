@@ -53,8 +53,8 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - [x] - Stop thread if status is disabled.
 - [x] - Stop thread if not the owner of thread.
 - [x] - CPU health check based on threshold.
-- [ ] - Memory health check based on threshold.
-- [ ] - Recover from critical state when thresholds are met.
+- [x] - Memory health check based on threshold.
+- [x] - Recover from critical state when thresholds are met.
 
 ### Javascript Todo
 - [x] - Basic javascript implementation
