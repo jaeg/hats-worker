@@ -16,6 +16,7 @@ import (
 	"github.com/robertkrimen/otto"
 	_ "github.com/robertkrimen/otto/underscore"
 	"github.com/shirou/gopsutil/load"
+	"github.com/shirou/gopsutil/mem"
 )
 
 var redisAddr = flag.String("redis-address", "", "the address for the main redis")
@@ -24,7 +25,7 @@ var cluster = flag.String("cluster-name", "default", "name of cluster")
 var wartName = flag.String("wart-name", "noname", "the unique name of this wart")
 var scriptList = flag.String("scripts", "", "comma delimited list of scripts to run")
 var cpuThreshold = flag.Float64("cpu-threshold", 1, "the load before unhealthy")
-var memThreshold = flag.Float64("mem-threshold", 1, "max memory usage before unhealthy")
+var memThreshold = flag.Float64("mem-threshold", 90.0, "max memory usage percent before unhealthy")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 var runNow = flag.Bool("run-now", false, "Run loaded scripts immediately.")
 
@@ -44,10 +45,9 @@ func main() {
 	defer fmt.Println("Wart stopped.")
 
 	if err == nil {
-		pong, err := client.Ping().Result()
-		fmt.Println(pong, err)
+		pong, pongErr := client.Ping().Result()
 
-		if err == nil {
+		if pongErr == nil && pong == "PONG" {
 			go checkHealth()
 			for true {
 				checkThreads()
@@ -110,25 +110,35 @@ func checkHealth() {
 	//If not figure out what it should give up
 	//For each thing that should be given up compress code and put in redis
 	for true {
-		fmt.Println("Health Check")
 		crit := false
 
+		//CPU Load
 		c, _ := load.Avg()
 		fmt.Println("Current Load:", c.Load1)
+		client.HSet("Wart:"+*wartName+":Health", "cpu", c.Load1)
 		if c.Load1 > *cpuThreshold {
 			crit = true
 			fmt.Printf("Load Critical: %v\n", c.Load1)
 		}
 
+		//Memory Load
+		v, _ := mem.VirtualMemory()
+		fmt.Printf("Total: %v, Free:%v, UsedPercent:%f%%\n", v.Total, v.Free, v.UsedPercent)
+		client.HSet("Wart:"+*wartName+":Health", "memory", v.UsedPercent)
+		if v.UsedPercent > *memThreshold {
+			crit = true
+			fmt.Printf("Memory Critical - Total: %v, Free:%v, UsedPercent:%f%%\n", v.Total, v.Free, v.UsedPercent)
+		}
+
+		//Handle critcal condition
 		if crit {
 			healthy = false
 			client.HSet("Wart:"+*wartName, "Status", "critical")
 			fmt.Println("I'm unhealthy!")
-		}
-
-		if crit == false {
+		} else {
 			client.HSet("Wart:"+*wartName, "Status", "normal")
 		}
+
 		time.Sleep(*healthInterval * time.Second)
 	}
 }
