@@ -26,6 +26,26 @@ Each wart in a cluster checks in redis for work to do.  If it finds a stopped th
 ## Javascript implementation
 Wart's Javascript implementation is based on [Otto](https://github.com/robertkrimen/otto).  Each thread maintains its own scope.  When a thread starts it runs the entire script.  It then runs `init()` if present in the source code.  If present a thread will call `main()` after confirming the thread is still running.
 
+### Extra Javascript Functions
+Otto only include what's in the base Javascript definition and lacks certain useful libraries.  Those we recreated are:
+#### HTTP
+- http.Get(url)
+  - returns {body:'',headers:[], status: 200}
+- http.Post(url, body)
+  - returns {body:'',headers:[], status: 200}
+- http.PostForm(url, bodyObject)
+  - returns {body:'',headers:[], status: 200}
+- http.Put(url, body)
+  - returns {body:'',headers:[], status: 200}
+- http.Head(url)
+  - returns {headers:[], status: 200}
+- http.Delete(url)
+  - returns {body:'',headers:[], status: 200}
+
+#### Redis
+- redis.Do(method, args....)
+  - return [response from redis, error (if one)]
+
 ### Wart Todo
 - [x] - Run a thread from redis.
 - [x] - Create thread from file.
@@ -39,7 +59,8 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
 ### Javascript Todo
 - [x] - Basic javascript implementation
 - [x] - Keep scope inside of thread
-- [ ] - Redis wrapper
+- [x] - Redis wrapper
+- [x] - Http wrapper
 - [ ] - Wart information i.e. Health, name, cluster
 - [ ] - Thread information i.e. Delay, State, Status
 - [ ] - Thread control i.e. Stop thread, disable thread.
