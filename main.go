@@ -34,7 +34,7 @@ var healthy = true
 
 func main() {
 	fmt.Println("Wart started.")
-	err := Init()
+	err := start()
 	if client != nil {
 		defer client.HSet("Wart:"+*wartName, "Status", "offline")
 	}
@@ -58,7 +58,7 @@ func main() {
 
 }
 
-func Init() error {
+func start() error {
 	fmt.Println("Init")
 	flag.Parse()
 
@@ -71,6 +71,10 @@ func Init() error {
 		Password: *redisPassword, // no password set
 		DB:       0,              // use default DB
 	})
+	_, err := client.Ping().Result()
+	if err != nil {
+		return errors.New("redis failed ping")
+	}
 	client.HSet("Wart:"+*wartName, "Status", "online")
 
 	if *scriptList != "" {
