@@ -28,9 +28,9 @@ var runNow = flag.Bool("run-now", false, "Run loaded scripts immediately.")
 
 var secondsTillDead = 1
 var client *redis.Client
-var clusterStatuses []string
 
 var healthy = true
+var threadCount = 0
 
 func main() {
 	fmt.Println("Wart started.")
@@ -42,15 +42,11 @@ func main() {
 	defer fmt.Println("Wart stopped.")
 
 	if err == nil {
-		pong, pongErr := client.Ping().Result()
-
-		if pongErr == nil && pong == "PONG" {
-			go checkHealth()
-			for true {
-				checkThreads()
-				client.HSet("Wart:"+*wartName, "Heartbeat", time.Now().UnixNano())
-				time.Sleep(time.Second)
-			}
+		go checkHealth()
+		for true {
+			checkThreads()
+			client.HSet("Wart:"+*wartName, "Heartbeat", time.Now().UnixNano())
+			time.Sleep(time.Second)
 		}
 	} else {
 		fmt.Println(err)
@@ -71,35 +67,46 @@ func start() error {
 		Password: *redisPassword, // no password set
 		DB:       0,              // use default DB
 	})
-	_, err := client.Ping().Result()
-	if err != nil {
+
+	pong, pongErr := client.Ping().Result()
+
+	if pongErr != nil && pong != "PONG" {
 		return errors.New("redis failed ping")
 	}
+
 	client.HSet("Wart:"+*wartName, "Status", "online")
 
 	if *scriptList != "" {
-		scriptArray := strings.Split(*scriptList, ",")
-		for i := range scriptArray {
-			scriptName := scriptArray[i]
-			fmt.Println("Loading " + scriptName)
-			fBytes, err := ioutil.ReadFile(scriptName)
-			if err != nil {
-				return err
-			}
-			client.HSet(*cluster+":Threads:"+scriptName, "Source", string(fBytes))
-			client.HSet(*cluster+":Threads:"+scriptName, "Status", "enabled")
+		err := loadScripts(*scriptList, *runNow)
+		if err != nil {
+			return err
+		}
+	}
 
-			if *runNow {
-				client.HSet(*cluster+":Threads:"+scriptName, "State", "running")
-				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", time.Now().UnixNano())
-				client.HSet(*cluster+":Threads:"+scriptName, "Owner", *wartName)
-				go thread(*cluster+":Threads:"+scriptName, string(fBytes))
-			} else {
-				client.HSet(*cluster+":Threads:"+scriptName, "State", "stopped")
-				client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", 0)
-				client.HSet(*cluster+":Threads:"+scriptName, "Owner", "")
-			}
+	return nil
+}
 
+func loadScripts(scripts string, run bool) error {
+	scriptArray := strings.Split(scripts, ",")
+	for i := range scriptArray {
+		scriptName := scriptArray[i]
+		fmt.Println("Loading " + scriptName)
+		fBytes, err := ioutil.ReadFile(scriptName)
+		if err != nil {
+			return err
+		}
+		client.HSet(*cluster+":Threads:"+scriptName, "Source", string(fBytes))
+		client.HSet(*cluster+":Threads:"+scriptName, "Status", "enabled")
+
+		if run {
+			client.HSet(*cluster+":Threads:"+scriptName, "State", "running")
+			client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", time.Now().UnixNano())
+			client.HSet(*cluster+":Threads:"+scriptName, "Owner", *wartName)
+			go thread(*cluster+":Threads:"+scriptName, string(fBytes))
+		} else {
+			client.HSet(*cluster+":Threads:"+scriptName, "State", "stopped")
+			client.HSet(*cluster+":Threads:"+scriptName, "Heartbeat", 0)
+			client.HSet(*cluster+":Threads:"+scriptName, "Owner", "")
 		}
 	}
 
@@ -155,6 +162,7 @@ func takeThread(key string) {
 }
 func thread(key string, source string) {
 	fmt.Println("Thread started: " + key)
+	threadCount++
 	shouldStop := false
 	vm := otto.New()
 
@@ -216,6 +224,7 @@ func thread(key string, source string) {
 		time.Sleep(time.Second * 1)
 	}
 	client.HSet(key, "State", "stopped")
+	threadCount--
 }
 
 func checkThreads() {
