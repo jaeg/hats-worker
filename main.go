@@ -118,28 +118,8 @@ func checkHealth() {
 	//If not figure out what it should give up
 	//For each thing that should be given up compress code and put in redis
 	for true {
-		crit := false
-
-		//CPU Load
-		c, _ := load.Avg()
-		fmt.Println("Current Load:", c.Load1)
-		client.HSet("Wart:"+*wartName+":Health", "cpu", c.Load1)
-		if c.Load1 > *cpuThreshold {
-			crit = true
-			fmt.Printf("Load Critical: %v\n", c.Load1)
-		}
-
-		//Memory Load
-		v, _ := mem.VirtualMemory()
-		fmt.Printf("Total: %v, Free:%v, UsedPercent:%f%%\n", v.Total, v.Free, v.UsedPercent)
-		client.HSet("Wart:"+*wartName+":Health", "memory", v.UsedPercent)
-		if v.UsedPercent > *memThreshold {
-			crit = true
-			fmt.Printf("Memory Critical - Total: %v, Free:%v, UsedPercent:%f%%\n", v.Total, v.Free, v.UsedPercent)
-		}
-
 		//Handle critcal condition
-		if crit {
+		if getCPUHealth(*cpuThreshold) || getMemoryHealth(*memThreshold) {
 			healthy = false
 			client.HSet("Wart:"+*wartName, "Status", "critical")
 			fmt.Println("I'm unhealthy!")
@@ -150,6 +130,24 @@ func checkHealth() {
 
 		time.Sleep(*healthInterval * time.Second)
 	}
+}
+
+func getMemoryHealth(threshold float64) bool {
+	v, _ := mem.VirtualMemory()
+	client.HSet("Wart:"+*wartName+":Health", "memory", v.UsedPercent)
+	if v.UsedPercent > threshold {
+		return true
+	}
+	return false
+}
+
+func getCPUHealth(threshold float64) bool {
+	c, _ := load.Avg()
+	client.HSet("Wart:"+*wartName+":Health", "cpu", c.Load1)
+	if c.Load1 > threshold {
+		return true
+	}
+	return false
 }
 
 func takeThread(key string) {
