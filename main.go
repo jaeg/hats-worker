@@ -20,28 +20,32 @@ var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for heal
 
 func main() {
 	flag.Parse()
-	fmt.Println("Wart started.")
 	w := &wart.Wart{RedisAddr: *redisAddr, RedisPassword: *redisPassword,
 		Cluster: *cluster, WartName: *wartName, ScriptList: *scriptList,
 		CpuThreshold: *cpuThreshold, MemThreshold: *memThreshold, HealthInterval: *healthInterval, Healthy: true, SecondsTillDead: 1}
+
 	var err error
-	fmt.Println(*redisAddr, w)
 	err = wart.Start(w)
 	if w.Client != nil {
 		defer w.Client.HSet("Wart:"+w.WartName, "Status", "offline")
 	}
 
-	defer fmt.Println("Wart stopped.")
-
 	if err == nil {
-		go wart.CheckHealth(w)
+		//Health check thread
+		go func() {
+			for true {
+				wart.CheckHealth(w)
+			}
+		}()
+
+		//handle creating new threads.
 		for true {
 			wart.CheckThreads(w)
 			w.Client.HSet("Wart:"+w.WartName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
 		}
 	} else {
-		fmt.Println(err)
+		fmt.Println("Failed to start:", err)
 	}
 
 }

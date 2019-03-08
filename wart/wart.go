@@ -31,8 +31,6 @@ type Wart struct {
 }
 
 func Start(w *Wart) error {
-	fmt.Println("Init")
-
 	if w.RedisAddr == "" {
 		return errors.New("no redis address provided")
 	}
@@ -84,19 +82,18 @@ func CheckHealth(w *Wart) {
 	//check to see if wart is Healthy
 	//If not figure out what it should give up
 	//For each thing that should be given up compress code and put in redis
-	for true {
-		//Handle critcal condition
-		if getCPUHealth(w, w.CpuThreshold) || getMemoryHealth(w, w.MemThreshold) {
-			w.Healthy = false
-			w.Client.HSet("Wart:"+w.WartName, "Status", "critical")
-			fmt.Println("I'm unHealthy!")
-		} else {
-			w.Healthy = true
-			w.Client.HSet("Wart:"+w.WartName, "Status", "normal")
-		}
-
-		time.Sleep(w.HealthInterval * time.Second)
+	//Handle critcal condition
+	if getCPUHealth(w, w.CpuThreshold) || getMemoryHealth(w, w.MemThreshold) {
+		w.Healthy = false
+		w.Client.HSet("Wart:"+w.WartName, "Status", "critical")
+		fmt.Println("I'm unHealthy!")
+	} else {
+		w.Healthy = true
+		w.Client.HSet("Wart:"+w.WartName, "Status", "normal")
 	}
+
+	time.Sleep(w.HealthInterval * time.Second)
+
 }
 
 func getMemoryHealth(w *Wart, threshold float64) bool {
