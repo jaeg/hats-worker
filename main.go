@@ -20,12 +20,8 @@ var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for heal
 
 func main() {
 	flag.Parse()
-	w := &wart.Wart{RedisAddr: *redisAddr, RedisPassword: *redisPassword,
-		Cluster: *cluster, WartName: *wartName, ScriptList: *scriptList,
-		CpuThreshold: *cpuThreshold, MemThreshold: *memThreshold, HealthInterval: *healthInterval, Healthy: true, SecondsTillDead: 1}
 
-	var err error
-	err = wart.Start(w)
+	w, err := wart.CreateWart(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval)
 	if w.Client != nil {
 		defer w.Client.HSet("Wart:"+w.WartName, "Status", "offline")
 	}

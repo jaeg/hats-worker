@@ -30,9 +30,13 @@ type Wart struct {
 	SecondsTillDead int
 }
 
-func Start(w *Wart) error {
+func CreateWart(redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration) (*Wart, error) {
+	w := &Wart{RedisAddr: redisAddr, RedisPassword: redisPassword,
+		Cluster: cluster, WartName: wartName, ScriptList: scriptList,
+		CpuThreshold: cpuThreshold, MemThreshold: memThreshold, HealthInterval: healthInterval, Healthy: true, SecondsTillDead: 1}
+
 	if w.RedisAddr == "" {
-		return errors.New("no redis address provided")
+		return nil, errors.New("no redis address provided")
 	}
 
 	w.Client = redis.NewClient(&redis.Options{
@@ -44,7 +48,7 @@ func Start(w *Wart) error {
 	pong, pongErr := w.Client.Ping().Result()
 
 	if pongErr != nil && pong != "PONG" {
-		return errors.New("redis failed ping")
+		return nil, errors.New("redis failed ping")
 	}
 
 	w.Client.HSet("Wart:"+w.WartName, "Status", "online")
@@ -52,11 +56,11 @@ func Start(w *Wart) error {
 	if w.ScriptList != "" {
 		err := loadScripts(w, w.ScriptList)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return w, nil
 }
 
 func loadScripts(w *Wart, scripts string) error {
