@@ -2,10 +2,9 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"redis-wart/wart"
 	"time"
-
+	log "github.com/sirupsen/logrus"
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
@@ -19,11 +18,13 @@ var memThreshold = flag.Float64("mem-threshold", 90.0, "max memory usage percent
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 
 func main() {
+	log.SetLevel(log.InfoLevel)
+	log.Debug("Wart Started")
 	flag.Parse()
-
-	w, err := wart.CreateWart(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval)
+	w, err := wart.Create(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval)
 	if w.Client != nil {
-		defer w.Client.HSet("Wart:"+w.WartName, "Status", "offline")
+		defer w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "offline")
+		defer log.Debug("Wart Stopped")
 	}
 
 	if err == nil {
@@ -36,13 +37,16 @@ func main() {
 		}()
 
 		//handle creating new threads.
-		for true {
-			wart.CheckThreads(w)
-			w.Client.HSet("Wart:"+w.WartName, "Heartbeat", time.Now().UnixNano())
+		for wart.IsEnabled(w) {
+			if w.Healthy {
+				wart.CheckThreads(w)
+			}
+			w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
 		}
+		log.Info("Wart has been disabled. Shutting down.")
 	} else {
-		fmt.Println("Failed to start:", err)
+		log.WithError(err).Error("Failed to start wart.")
 	}
 
 }

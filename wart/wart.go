@@ -2,7 +2,6 @@ package wart
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/mem"
+	log "github.com/sirupsen/logrus"
 )
 
 type Wart struct {
@@ -30,7 +30,7 @@ type Wart struct {
 	SecondsTillDead int
 }
 
-func CreateWart(redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration) (*Wart, error) {
+func Create(redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration) (*Wart, error) {
 	w := &Wart{RedisAddr: redisAddr, RedisPassword: redisPassword,
 		Cluster: cluster, WartName: wartName, ScriptList: scriptList,
 		CpuThreshold: cpuThreshold, MemThreshold: memThreshold, HealthInterval: healthInterval, Healthy: true, SecondsTillDead: 1}
@@ -51,7 +51,8 @@ func CreateWart(redisAddr string, redisPassword string, cluster string, wartName
 		return nil, errors.New("redis failed ping")
 	}
 
-	w.Client.HSet("Wart:"+w.WartName, "Status", "online")
+	w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "online")
+	w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "Status", "enabled")
 
 	if w.ScriptList != "" {
 		err := loadScripts(w, w.ScriptList)
@@ -63,11 +64,62 @@ func CreateWart(redisAddr string, redisPassword string, cluster string, wartName
 	return w, nil
 }
 
+//CheckHealth Checks the health of the wart and puts it in redis.
+func CheckHealth(w *Wart) {
+	if getCPUHealth(w) || getMemoryHealth(w) {
+		w.Healthy = false
+		w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "critical")
+		log.Error("Unhealthy")
+	} else {
+		if w.Healthy == false {
+			log.Info("Health Restored")
+		}
+		w.Healthy = true
+		w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "normal")
+	}
+}
+
+func IsEnabled(w *Wart) bool {
+	status := w.Client.HGet(w.Cluster+":Wart:"+w.WartName, "Status").Val()
+	if status == "disabled" {
+		return false
+	}
+	return true
+}
+
+func CheckThreads(w *Wart) {
+	threads := w.Client.Keys(w.Cluster + ":Threads:*").Val()
+	for i := range threads {
+		threadStatus, threadState := getThreadStatus(w, threads[i])
+		if threadStatus != "disabled" {
+			if threadState == "stopped" {
+				takeThread(w, threads[i])
+				continue
+			}
+			//Check to see if thread is hung or fell over before its state was updated
+			lastHeartbeatString := w.Client.HGet(threads[i], "Heartbeat").Val()
+			lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
+			if err == nil {
+				elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
+				if int(elapsed.Seconds()) > w.SecondsTillDead {
+					takeThread(w, threads[i])
+				}
+			}
+		}
+	}
+}
+
+func getThreadStatus(w *Wart, key string) (status string, state string) {
+	status = w.Client.HGet(key, "Status").Val()
+	state = w.Client.HGet(key, "State").Val()
+	return
+}
+
 func loadScripts(w *Wart, scripts string) error {
 	scriptArray := strings.Split(scripts, ",")
 	for i := range scriptArray {
 		scriptName := scriptArray[i]
-		fmt.Println("Loading " + scriptName)
+		log.Info("Loading", scriptName)
 		fBytes, err := ioutil.ReadFile(scriptName)
 		if err != nil {
 			return err
@@ -81,25 +133,9 @@ func loadScripts(w *Wart, scripts string) error {
 
 	return nil
 }
-
-func CheckHealth(w *Wart) {
-	//check to see if wart is Healthy
-	//If not figure out what it should give up
-	//For each thing that should be given up compress code and put in redis
-	//Handle critcal condition
-	if getCPUHealth(w) || getMemoryHealth(w) {
-		w.Healthy = false
-		w.Client.HSet("Wart:"+w.WartName, "Status", "critical")
-		fmt.Println("I'm unHealthy!")
-	} else {
-		w.Healthy = true
-		w.Client.HSet("Wart:"+w.WartName, "Status", "normal")
-	}
-}
-
 func getMemoryHealth(w *Wart) bool {
 	v, _ := mem.VirtualMemory()
-	w.Client.HSet("Wart:"+w.WartName+":Health", "memory", v.UsedPercent)
+	w.Client.HSet(w.Cluster+":Wart:"+w.WartName+":Health", "memory", v.UsedPercent)
 	if v.UsedPercent > w.MemThreshold {
 		return true
 	}
@@ -108,7 +144,7 @@ func getMemoryHealth(w *Wart) bool {
 
 func getCPUHealth(w *Wart) bool {
 	c, _ := load.Avg()
-	w.Client.HSet("Wart:"+w.WartName+":Health", "cpu", c.Load1)
+	w.Client.HSet(w.Cluster+":Wart:"+w.WartName+":Health", "cpu", c.Load1)
 	if c.Load1 > w.CpuThreshold {
 		return true
 	}
@@ -116,7 +152,7 @@ func getCPUHealth(w *Wart) bool {
 }
 
 func takeThread(w *Wart, key string) {
-	fmt.Println("Taking thread: " + key)
+	log.Info("Taking thread", key)
 	source := w.Client.HGet(key, "Source").Val()
 	w.Client.HSet(key, "State", "running")
 	w.Client.HSet(key, "Heartbeat", time.Now().UnixNano())
@@ -124,8 +160,7 @@ func takeThread(w *Wart, key string) {
 	go thread(w, key, source)
 }
 func thread(w *Wart, key string, source string) {
-	fmt.Println("Thread started: " + key)
-	w.ThreadCount++
+	log.Info("Taking thread", key)
 	shouldStop := false
 	vm := otto.New()
 
@@ -145,7 +180,7 @@ func thread(w *Wart, key string, source string) {
 	if err != nil {
 		w.Client.HSet(key, "State", "crashed")
 		w.Client.HSet(key, "Status", "disabled")
-		fmt.Println(err)
+		log.WithError(err).Error("Syntax error in script.")
 		return
 	}
 
@@ -154,7 +189,7 @@ func thread(w *Wart, key string, source string) {
 	if err != nil {
 		w.Client.HSet(key, "State", "crashed")
 		w.Client.HSet(key, "Status", "disabled")
-		fmt.Println(err)
+		log.WithError(err).Error("Error running init() in script")
 		return
 	}
 	for w.Healthy && !shouldStop {
@@ -164,7 +199,7 @@ func thread(w *Wart, key string, source string) {
 		status := w.Client.HGet(key, "Status")
 		owner := w.Client.HGet(key, "Owner")
 		if status.Val() == "disabled" {
-			fmt.Println("Disabled:" + key)
+			log.Warn(key, "Was disabled.  Stopping thread.")
 			w.Client.HSet(key, "State", "stopped")
 			shouldStop = true
 			continue
@@ -180,39 +215,11 @@ func thread(w *Wart, key string, source string) {
 		if err != nil {
 			w.Client.HSet(key, "State", "crashed")
 			w.Client.HSet(key, "Status", "disabled")
-			fmt.Println(err)
+			log.WithError(err).Error("Error running main() in script")
 			return
 		}
 
 		time.Sleep(time.Second * 1)
 	}
 	w.Client.HSet(key, "State", "stopped")
-	w.ThreadCount--
-}
-
-func CheckThreads(w *Wart) {
-	if w.Healthy {
-		threads := w.Client.Keys(w.Cluster + ":Threads:*").Val()
-		for i := range threads {
-			threadStatus := w.Client.HGet(threads[i], "Status").Val()
-			if threadStatus != "disabled" {
-				threadState := w.Client.HGet(threads[i], "State").Val()
-				if threadState == "stopped" {
-					takeThread(w, threads[i])
-					continue
-				}
-				//Check to see if thread is hung or fell over before its state was updated
-				lastHeartbeatString := w.Client.HGet(threads[i], "Heartbeat").Val()
-				lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
-				if err == nil {
-					elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
-					if int(elapsed.Seconds()) > w.SecondsTillDead {
-						fmt.Println("Dead thread: " + threads[i])
-						//Take it.
-						takeThread(w, threads[i])
-					}
-				}
-			}
-		}
-	}
 }
