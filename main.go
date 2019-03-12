@@ -4,8 +4,9 @@ import (
 	"flag"
 	"redis-wart/wart"
 	"time"
-	log "github.com/sirupsen/logrus"
+
 	_ "github.com/robertkrimen/otto/underscore"
+	log "github.com/sirupsen/logrus"
 )
 
 var redisAddr = flag.String("redis-address", "", "the address for the main redis")
@@ -16,12 +17,13 @@ var scriptList = flag.String("scripts", "", "comma delimited list of scripts to 
 var cpuThreshold = flag.Float64("cpu-threshold", 1, "the load before unhealthy")
 var memThreshold = flag.Float64("mem-threshold", 90.0, "max memory usage percent before unhealthy")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
+var host = flag.Bool("host", false, "Allow this wart to be an http host.")
 
 func main() {
 	log.SetLevel(log.InfoLevel)
 	log.Debug("Wart Started")
 	flag.Parse()
-	w, err := wart.Create(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval)
+	w, err := wart.Create(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval, *host)
 	if w.Client != nil {
 		defer w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "offline")
 		defer log.Debug("Wart Stopped")

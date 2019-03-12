@@ -2,7 +2,10 @@ package wart
 
 import (
 	"errors"
+	"fmt"
+	"html"
 	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -30,7 +33,7 @@ type Wart struct {
 	SecondsTillDead int
 }
 
-func Create(redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration) (*Wart, error) {
+func Create(redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration, host bool) (*Wart, error) {
 	w := &Wart{RedisAddr: redisAddr, RedisPassword: redisPassword,
 		Cluster: cluster, WartName: wartName, ScriptList: scriptList,
 		CpuThreshold: cpuThreshold, MemThreshold: memThreshold, HealthInterval: healthInterval, Healthy: true, SecondsTillDead: 1}
@@ -61,6 +64,10 @@ func Create(redisAddr string, redisPassword string, cluster string, wartName str
 		}
 	}
 
+	if host {
+		http.HandleFunc("/", w.handleEndpoint)
+		log.Error(http.ListenAndServe(":9999", nil))
+	}
 	return w, nil
 }
 
@@ -105,6 +112,40 @@ func CheckThreads(w *Wart) {
 					takeThread(w, threads[i])
 				}
 			}
+		}
+	}
+}
+
+func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
+	if wart.Healthy {
+		source := wart.Client.HGet(wart.Cluster+":Endpoints:"+html.EscapeString(r.URL.Path), "Source").Val()
+		if source != "" {
+			vm := otto.New()
+
+			vm.Set("redis", map[string]interface{}{
+				"Do": wart.Client.Do,
+			})
+
+			vm.Set("http", map[string]interface{}{
+				"Get":      httpGet,
+				"Post":     httpPost,
+				"PostForm": httpPostForm,
+				"Put":      httpPut,
+				"Delete":   httpDelete,
+			})
+
+			vm.Set("response", map[string]interface{}{
+				"Write": func(value string) {
+					fmt.Fprintf(w, value)
+				},
+			})
+			//Get whole script in memory.
+			_, err := vm.Run(source)
+			if err != nil {
+				log.WithError(err).Error("Syntax error in script.")
+			}
+		} else {
+			fmt.Fprintf(w, "No Endpoint")
 		}
 	}
 }

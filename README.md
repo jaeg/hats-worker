@@ -46,6 +46,11 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - redis.Do(method, args....)
   - return [response from redis, error (if one)]
 
+#### Response
+- response.Write(value)
+  - Used when a wart is in endpoint mode.  Writes to the response body of an http request.
+  - returns nothing.
+
 ### Wart Todo
 - [x] - Run a thread from redis.
 - [x] - Create thread from file.
