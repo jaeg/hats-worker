@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 	w, err := wart.Create(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval)
 	if w.Client != nil {
-		defer w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "offline")
+		defer w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "offline")
 		defer log.Debug("Wart Stopped")
 	}
 
@@ -41,7 +41,7 @@ func main() {
 			if w.Healthy {
 				wart.CheckThreads(w)
 			}
-			w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "Heartbeat", time.Now().UnixNano())
+			w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
 		}
 		log.Info("Wart has been disabled. Shutting down.")

@@ -51,8 +51,8 @@ func Create(redisAddr string, redisPassword string, cluster string, wartName str
 		return nil, errors.New("redis failed ping")
 	}
 
-	w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "online")
-	w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "Status", "enabled")
+	w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "online")
+	w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "Status", "enabled")
 
 	if w.ScriptList != "" {
 		err := loadScripts(w, w.ScriptList)
@@ -68,19 +68,19 @@ func Create(redisAddr string, redisPassword string, cluster string, wartName str
 func CheckHealth(w *Wart) {
 	if getCPUHealth(w) || getMemoryHealth(w) {
 		w.Healthy = false
-		w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "critical")
+		w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "critical")
 		log.Error("Unhealthy")
 	} else {
 		if w.Healthy == false {
 			log.Info("Health Restored")
 		}
 		w.Healthy = true
-		w.Client.HSet(w.Cluster+":Wart:"+w.WartName, "State", "normal")
+		w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "normal")
 	}
 }
 
 func IsEnabled(w *Wart) bool {
-	status := w.Client.HGet(w.Cluster+":Wart:"+w.WartName, "Status").Val()
+	status := w.Client.HGet(w.Cluster+":Warts:"+w.WartName, "Status").Val()
 	if status == "disabled" {
 		return false
 	}
@@ -135,7 +135,7 @@ func loadScripts(w *Wart, scripts string) error {
 }
 func getMemoryHealth(w *Wart) bool {
 	v, _ := mem.VirtualMemory()
-	w.Client.HSet(w.Cluster+":Wart:"+w.WartName+":Health", "memory", v.UsedPercent)
+	w.Client.HSet(w.Cluster+":Warts:"+w.WartName+":Health", "memory", v.UsedPercent)
 	if v.UsedPercent > w.MemThreshold {
 		return true
 	}
@@ -144,7 +144,7 @@ func getMemoryHealth(w *Wart) bool {
 
 func getCPUHealth(w *Wart) bool {
 	c, _ := load.Avg()
-	w.Client.HSet(w.Cluster+":Wart:"+w.WartName+":Health", "cpu", c.Load1)
+	w.Client.HSet(w.Cluster+":Warts:"+w.WartName+":Health", "cpu", c.Load1)
 	if c.Load1 > w.CpuThreshold {
 		return true
 	}
