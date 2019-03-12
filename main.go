@@ -31,6 +31,7 @@ func main() {
 		go func() {
 			for true {
 				wart.CheckHealth(w)
+				time.Sleep(w.HealthInterval * time.Second)
 			}
 		}()
 
