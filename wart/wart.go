@@ -122,6 +122,14 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 		if source != "" {
 			vm := otto.New()
 
+			fmt.Println(r.URL.Query())
+
+			vm.Set("request", map[string]interface{}{
+				"Method": r.Method,
+				"Path":   html.EscapeString(r.URL.Path),
+				"Query":  r.URL.Query(),
+			})
+
 			vm.Set("redis", map[string]interface{}{
 				"Do": wart.Client.Do,
 			})
