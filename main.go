@@ -18,12 +18,13 @@ var cpuThreshold = flag.Float64("cpu-threshold", 1, "the load before unhealthy")
 var memThreshold = flag.Float64("mem-threshold", 90.0, "max memory usage percent before unhealthy")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 var host = flag.Bool("host", false, "Allow this wart to be an http host.")
+var configFile = flag.String("config", "", "Config file with wart settings")
 
 func main() {
 	log.SetLevel(log.InfoLevel)
 	log.Debug("Wart Started")
 	flag.Parse()
-	w, err := wart.Create(*redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval, *host)
+	w, err := wart.Create(*configFile, *redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval, *host)
 	if w.Client != nil {
 		defer w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "offline")
 		defer log.Debug("Wart Stopped")

@@ -1,6 +1,7 @@
 package wart
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -33,7 +34,27 @@ type Wart struct {
 	SecondsTillDead int
 }
 
-func Create(redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration, host bool) (*Wart, error) {
+func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration, host bool) (*Wart, error) {
+	if configFile != "" {
+		fBytes, err := ioutil.ReadFile(configFile)
+		if err == nil {
+			var f interface{}
+			err2 := json.Unmarshal(fBytes, &f)
+			if err2 == nil {
+				m := f.(map[string]interface{})
+				redisAddr = m["redis-address"].(string)
+				redisPassword = m["redis-password"].(string)
+				cluster = m["cluster"].(string)
+				wartName = m["name"].(string)
+				cpuThreshold = m["cpu-threshold"].(float64)
+				memThreshold = m["mem-threshold"].(float64)
+				t := m["health-interval"].(float64)
+				healthInterval = time.Duration(t)
+				host = m["host"].(bool)
+			}
+		}
+	}
+
 	w := &Wart{RedisAddr: redisAddr, RedisPassword: redisPassword,
 		Cluster: cluster, WartName: wartName, ScriptList: scriptList,
 		CpuThreshold: cpuThreshold, MemThreshold: memThreshold, HealthInterval: healthInterval, Healthy: true, SecondsTillDead: 1}
@@ -66,7 +87,7 @@ func Create(redisAddr string, redisPassword string, cluster string, wartName str
 
 	if host {
 		http.HandleFunc("/", w.handleEndpoint)
-		log.Error(http.ListenAndServe(":9999", nil))
+		go func() { http.ListenAndServe(":9999", nil) }()
 	}
 	return w, nil
 }
@@ -121,8 +142,6 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 		source := wart.Client.HGet(wart.Cluster+":Endpoints:"+html.EscapeString(r.URL.Path), "Source").Val()
 		if source != "" {
 			vm := otto.New()
-
-			fmt.Println(r.URL.Query())
 
 			vm.Set("request", map[string]interface{}{
 				"Method": r.Method,
