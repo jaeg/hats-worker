@@ -139,7 +139,8 @@ func CheckThreads(w *Wart) {
 
 func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	if wart.Healthy {
-		source := wart.Client.HGet(wart.Cluster+":Endpoints:"+html.EscapeString(r.URL.Path), "Source").Val()
+		key := wart.Cluster + ":Endpoints:" + html.EscapeString(r.URL.Path)
+		source := wart.Client.HGet(key, "Source").Val()
 		if source != "" {
 			vm := otto.New()
 
@@ -169,6 +170,8 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 			//Get whole script in memory.
 			_, err := vm.Run(source)
 			if err != nil {
+				wart.Client.HSet(key, "Error", err.Error())
+				wart.Client.HSet(key, "ErrorTime", time.Now())
 				log.WithError(err).Error("Syntax error in script.")
 			}
 		} else {
@@ -192,11 +195,14 @@ func loadScripts(w *Wart, scripts string) error {
 		if err != nil {
 			return err
 		}
-		w.Client.HSet(w.Cluster+":Threads:"+scriptName, "Source", string(fBytes))
-		w.Client.HSet(w.Cluster+":Threads:"+scriptName, "Status", "enabled")
-		w.Client.HSet(w.Cluster+":Threads:"+scriptName, "State", "stopped")
-		w.Client.HSet(w.Cluster+":Threads:"+scriptName, "Heartbeat", 0)
-		w.Client.HSet(w.Cluster+":Threads:"+scriptName, "Owner", "")
+		key := w.Cluster + ":Threads:" + scriptName
+		w.Client.HSet(key, "Source", string(fBytes))
+		w.Client.HSet(key, "Status", "enabled")
+		w.Client.HSet(key, "State", "stopped")
+		w.Client.HSet(key, "Heartbeat", 0)
+		w.Client.HSet(key, "Owner", "")
+		w.Client.HSet(key, "Error", "")
+		w.Client.HSet(key, "ErrorTime", "")
 	}
 
 	return nil
@@ -248,6 +254,8 @@ func thread(w *Wart, key string, source string) {
 	if err != nil {
 		w.Client.HSet(key, "State", "crashed")
 		w.Client.HSet(key, "Status", "disabled")
+		w.Client.HSet(key, "Error", err.Error())
+		w.Client.HSet(key, "ErrorTime", time.Now())
 		log.WithError(err).Error("Syntax error in script.")
 		return
 	}
@@ -257,6 +265,8 @@ func thread(w *Wart, key string, source string) {
 	if err != nil {
 		w.Client.HSet(key, "State", "crashed")
 		w.Client.HSet(key, "Status", "disabled")
+		w.Client.HSet(key, "Error", err.Error())
+		w.Client.HSet(key, "ErrorTime", time.Now())
 		log.WithError(err).Error("Error running init() in script")
 		return
 	}
@@ -283,6 +293,8 @@ func thread(w *Wart, key string, source string) {
 		if err != nil {
 			w.Client.HSet(key, "State", "crashed")
 			w.Client.HSet(key, "Status", "disabled")
+			w.Client.HSet(key, "Error", err.Error())
+			w.Client.HSet(key, "ErrorTime", time.Now())
 			log.WithError(err).Error("Error running main() in script")
 			return
 		}
