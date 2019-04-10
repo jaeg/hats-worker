@@ -127,10 +127,17 @@ func CheckThreads(w *Wart) {
 			//Check to see if thread is hung or fell over before its state was updated
 			lastHeartbeatString := w.Client.HGet(threads[i], "Heartbeat").Val()
 			lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
+
 			if err == nil {
-				elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
-				if int(elapsed.Seconds()) > w.SecondsTillDead {
-					takeThread(w, threads[i])
+				deadSeconds, err := w.Client.HGet(threads[i], "DeadSeconds").Int()
+				if err == nil {
+					if deadSeconds == 0 {
+						deadSeconds = w.SecondsTillDead
+					}
+					elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
+					if int(elapsed.Seconds()) > deadSeconds && lastHeartbeat != 0 {
+						takeThread(w, threads[i])
+					}
 				}
 			}
 		}
@@ -228,7 +235,7 @@ func takeThread(w *Wart, key string) {
 	go thread(w, key, source)
 }
 func thread(w *Wart, key string, source string) {
-	log.Info("Taking thread", key)
+	log.Info("Starting Thread", key)
 	shouldStop := false
 	vm := otto.New()
 
@@ -260,34 +267,37 @@ func thread(w *Wart, key string, source string) {
 		log.WithError(err).Error("Error running init() in script")
 		return
 	}
-	for w.Healthy && !shouldStop {
-		w.Client.HSet(key, "Heartbeat", time.Now().UnixNano())
 
-		//Get status and stop if disabled.
-		status := w.Client.HGet(key, "Status")
-		owner := w.Client.HGet(key, "Owner")
-		if status.Val() == "disabled" {
-			log.Warn(key, "Was disabled.  Stopping thread.")
-			w.Client.HSet(key, "State", "stopped")
-			shouldStop = true
-			continue
+	hang, hangErr := w.Client.HGet(key, "Hang").Int()
+	if hangErr == nil {
+		for w.Healthy && !shouldStop {
+			w.Client.HSet(key, "Heartbeat", time.Now().UnixNano())
+
+			//Get status and stop if disabled.
+			status := w.Client.HGet(key, "Status")
+			owner := w.Client.HGet(key, "Owner")
+			if status.Val() == "disabled" {
+				log.Warn(key, "Was disabled.  Stopping thread.")
+				w.Client.HSet(key, "State", "stopped")
+				shouldStop = true
+				continue
+			}
+
+			if owner.Val() != w.WartName {
+				shouldStop = true
+				continue
+			}
+
+			_, err := vm.Run("if (main != undefined) {main()}")
+
+			if err != nil {
+				w.Client.HSet(key, "State", "crashed")
+				w.Client.HSet(key, "Status", "disabled")
+				log.WithError(err).Error("Error running main() in script")
+				return
+			}
+			time.Sleep(time.Duration(hang))
 		}
-
-		if owner.Val() != w.WartName {
-			shouldStop = true
-			continue
-		}
-
-		_, err := vm.Run("if (main != undefined) {main()}")
-
-		if err != nil {
-			w.Client.HSet(key, "State", "crashed")
-			w.Client.HSet(key, "Status", "disabled")
-			log.WithError(err).Error("Error running main() in script")
-			return
-		}
-
-		time.Sleep(time.Second * 1)
 	}
 	w.Client.HSet(key, "State", "stopped")
 }
