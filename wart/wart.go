@@ -298,6 +298,8 @@ func thread(w *Wart, key string, source string) {
 				continue
 			}
 
+			_, err := vm.Run("if (main != undefined) {main()}")
+
 			if err != nil {
 				w.Client.HSet(key, "State", "crashed")
 				w.Client.HSet(key, "Status", "disabled")
@@ -307,12 +309,6 @@ func thread(w *Wart, key string, source string) {
 				return
 			}
 
-			if err != nil {
-				w.Client.HSet(key, "State", "crashed")
-				w.Client.HSet(key, "Status", "disabled")
-				log.WithError(err).Error("Error running main() in script")
-				return
-			}
 			time.Sleep(time.Duration(hang))
 		}
 	}
