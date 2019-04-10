@@ -19,6 +19,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//Status Constants
+const DISABLED = "disabled"
+const CRASHED = "crashed"
+const ONLINE = "online"
+const ENABLED = "enabled"
+const STOPPED = "stopped"
+const RUNNING = "running"
+
 type Wart struct {
 	RedisAddr       string
 	RedisPassword   string
@@ -75,8 +83,8 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 		return nil, errors.New("redis failed ping")
 	}
 
-	w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "online")
-	w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "Status", "enabled")
+	w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", ONLINE)
+	w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "Status", ENABLED)
 
 	if w.ScriptList != "" {
 		err := loadScripts(w, w.ScriptList)
@@ -109,7 +117,7 @@ func CheckHealth(w *Wart) {
 
 func IsEnabled(w *Wart) bool {
 	status := w.Client.HGet(w.Cluster+":Warts:"+w.WartName, "Status").Val()
-	if status == "disabled" {
+	if status == DISABLED {
 		return false
 	}
 	return true
@@ -119,8 +127,8 @@ func CheckThreads(w *Wart) {
 	threads := w.Client.Keys(w.Cluster + ":Threads:*").Val()
 	for i := range threads {
 		threadStatus, threadState := getThreadStatus(w, threads[i])
-		if threadStatus != "disabled" {
-			if threadState == "stopped" {
+		if threadStatus != DISABLED {
+			if threadState == STOPPED {
 				takeThread(w, threads[i])
 				continue
 			}
@@ -204,8 +212,8 @@ func loadScripts(w *Wart, scripts string) error {
 		}
 		key := w.Cluster + ":Threads:" + scriptName
 		w.Client.HSet(key, "Source", string(fBytes))
-		w.Client.HSet(key, "Status", "enabled")
-		w.Client.HSet(key, "State", "stopped")
+		w.Client.HSet(key, "Status", ENABLED)
+		w.Client.HSet(key, "State", STOPPED)
 		w.Client.HSet(key, "Heartbeat", 0)
 		w.Client.HSet(key, "Owner", "")
 		w.Client.HSet(key, "Error", "")
@@ -235,7 +243,7 @@ func getCPUHealth(w *Wart) bool {
 func takeThread(w *Wart, key string) {
 	log.Info("Taking thread", key)
 	source := w.Client.HGet(key, "Source").Val()
-	w.Client.HSet(key, "State", "running")
+	w.Client.HSet(key, "State", RUNNING)
 	w.Client.HSet(key, "Heartbeat", time.Now().UnixNano())
 	w.Client.HSet(key, "Owner", w.WartName)
 	go thread(w, key, source)
@@ -259,8 +267,8 @@ func thread(w *Wart, key string, source string) {
 	//Get whole script in memory.
 	_, err := vm.Run(source)
 	if err != nil {
-		w.Client.HSet(key, "State", "crashed")
-		w.Client.HSet(key, "Status", "disabled")
+		w.Client.HSet(key, "State", CRASHED)
+		w.Client.HSet(key, "Status", DISABLED)
 		w.Client.HSet(key, "Error", err.Error())
 		w.Client.HSet(key, "ErrorTime", time.Now())
 		log.WithError(err).Error("Syntax error in script.")
@@ -270,8 +278,8 @@ func thread(w *Wart, key string, source string) {
 	//Run init script
 	_, err = vm.Run("if (init != undefined) {init()}")
 	if err != nil {
-		w.Client.HSet(key, "State", "crashed")
-		w.Client.HSet(key, "Status", "disabled")
+		w.Client.HSet(key, "State", CRASHED)
+		w.Client.HSet(key, "Status", DISABLED)
 		w.Client.HSet(key, "Error", err.Error())
 		w.Client.HSet(key, "ErrorTime", time.Now())
 		log.WithError(err).Error("Error running init() in script")
@@ -286,9 +294,9 @@ func thread(w *Wart, key string, source string) {
 			//Get status and stop if disabled.
 			status := w.Client.HGet(key, "Status")
 			owner := w.Client.HGet(key, "Owner")
-			if status.Val() == "disabled" {
+			if status.Val() == DISABLED {
 				log.Warn(key, "Was disabled.  Stopping thread.")
-				w.Client.HSet(key, "State", "stopped")
+				w.Client.HSet(key, "State", STOPPED)
 				shouldStop = true
 				continue
 			}
@@ -301,8 +309,8 @@ func thread(w *Wart, key string, source string) {
 			_, err := vm.Run("if (main != undefined) {main()}")
 
 			if err != nil {
-				w.Client.HSet(key, "State", "crashed")
-				w.Client.HSet(key, "Status", "disabled")
+				w.Client.HSet(key, "State", CRASHED)
+				w.Client.HSet(key, "Status", DISABLED)
 				w.Client.HSet(key, "Error", err.Error())
 				w.Client.HSet(key, "ErrorTime", time.Now())
 				log.WithError(err).Error("Error running main() in script")
@@ -312,5 +320,5 @@ func thread(w *Wart, key string, source string) {
 			time.Sleep(time.Duration(hang))
 		}
 	}
-	w.Client.HSet(key, "State", "stopped")
+	w.Client.HSet(key, "State", STOPPED)
 }
