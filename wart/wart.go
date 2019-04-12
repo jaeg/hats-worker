@@ -169,6 +169,19 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 
 			vm.Set("redis", map[string]interface{}{
 				"Do": wart.Client.Do,
+				"Blpop": func(call otto.FunctionCall) otto.Value {
+					timeout, err := call.Argument(0).ToInteger()
+					rKey := call.Argument(1).String()
+					if err == nil {
+						item := wart.Client.BLPop(time.Duration(timeout)*time.Second, rKey)
+						if len(item.Val()) > 0 {
+							value, _ := vm.ToValue(item.Val()[1])
+							return value
+						}
+					}
+					value, _ := vm.ToValue("")
+					return value
+				},
 			})
 
 			vm.Set("http", map[string]interface{}{
@@ -257,6 +270,19 @@ func thread(w *Wart, key string, source string) {
 
 	vm.Set("redis", map[string]interface{}{
 		"Do": w.Client.Do,
+		"Blpop": func(call otto.FunctionCall) otto.Value {
+			timeout, err := call.Argument(0).ToInteger()
+			rKey := call.Argument(1).String()
+			if err == nil {
+				item := w.Client.BLPop(time.Duration(timeout)*time.Second, rKey)
+				if len(item.Val()) > 0 {
+					value, _ := vm.ToValue(item.Val()[1])
+					return value
+				}
+			}
+			value, _ := vm.ToValue("")
+			return value
+		},
 	})
 
 	vm.Set("http", map[string]interface{}{
