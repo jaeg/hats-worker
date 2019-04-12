@@ -158,11 +158,13 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 		source := wart.Client.HGet(key, "Source").Val()
 		if source != "" {
 			vm := otto.New()
+			b, _ := ioutil.ReadAll(r.Body)
 
 			vm.Set("request", map[string]interface{}{
 				"Method": r.Method,
 				"Path":   html.EscapeString(r.URL.Path),
 				"Query":  r.URL.Query(),
+				"Body":   string(b),
 			})
 
 			vm.Set("redis", map[string]interface{}{
