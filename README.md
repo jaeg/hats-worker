@@ -28,6 +28,15 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
 
 ### Extra Javascript Functions
 Otto only include what's in the base Javascript definition and lacks certain useful libraries.  Those we recreated are:
+
+#### Wart
+- wart.Healthy
+  - returns bool
+- wart.Name
+  - returns string
+- wart.Cluster
+  - returns string
+
 #### HTTP
 - http.Get(url)
   - returns {body:'',headers:[], status: 200}
@@ -50,6 +59,16 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - response.Write(value)
   - Used when a wart is in endpoint mode.  Writes to the response body of an http request.
   - returns nothing.
+
+#### Request
+- request.Method
+  - returns string
+- request.Path
+  - returns string
+- request.Query
+  - returns {<name>:[values]}
+- request.Body
+  - returns string
 
 ### Wart Todo
 - [x] - Run a thread from redis.

@@ -326,4 +326,10 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 		"Put":      httpPut,
 		"Delete":   httpDelete,
 	})
+
+	vm.Set("wart", map[string]interface{}{
+		"Healthy": w.Healthy,
+		"Name":    w.WartName,
+		"Cluster": w.Cluster,
+	})
 }
