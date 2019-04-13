@@ -85,6 +85,6 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - [x] - Keep scope inside of thread
 - [x] - Redis wrapper
 - [x] - Http wrapper
-- [ ] - Wart information i.e. Health, name, cluster
+- [x] - Wart information i.e. Health, name, cluster
 - [ ] - Thread information i.e. Delay, State, Status
 - [ ] - Thread control i.e. Stop thread, disable thread.
