@@ -151,65 +151,6 @@ func CheckThreads(w *Wart) {
 		}
 	}
 }
-
-func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
-	if wart.Healthy {
-		key := wart.Cluster + ":Endpoints:" + html.EscapeString(r.URL.Path)
-		source := wart.Client.HGet(key, "Source").Val()
-		if source != "" {
-			vm := otto.New()
-			b, _ := ioutil.ReadAll(r.Body)
-
-			vm.Set("request", map[string]interface{}{
-				"Method": r.Method,
-				"Path":   html.EscapeString(r.URL.Path),
-				"Query":  r.URL.Query(),
-				"Body":   string(b),
-			})
-
-			vm.Set("redis", map[string]interface{}{
-				"Do": wart.Client.Do,
-				"Blpop": func(call otto.FunctionCall) otto.Value {
-					timeout, err := call.Argument(0).ToInteger()
-					rKey := call.Argument(1).String()
-					if err == nil {
-						item := wart.Client.BLPop(time.Duration(timeout)*time.Second, rKey)
-						if len(item.Val()) > 0 {
-							value, _ := vm.ToValue(item.Val()[1])
-							return value
-						}
-					}
-					value, _ := vm.ToValue("")
-					return value
-				},
-			})
-
-			vm.Set("http", map[string]interface{}{
-				"Get":      httpGet,
-				"Post":     httpPost,
-				"PostForm": httpPostForm,
-				"Put":      httpPut,
-				"Delete":   httpDelete,
-			})
-
-			vm.Set("response", map[string]interface{}{
-				"Write": func(value string) {
-					fmt.Fprintf(w, value)
-				},
-			})
-			//Get whole script in memory.
-			_, err := vm.Run(source)
-			if err != nil {
-				wart.Client.HSet(key, "Error", err.Error())
-				wart.Client.HSet(key, "ErrorTime", time.Now())
-				log.WithError(err).Error("Syntax error in script.")
-			}
-		} else {
-			fmt.Fprintf(w, "No Endpoint")
-		}
-	}
-}
-
 func getThreadStatus(w *Wart, key string) (status string, state string) {
 	status = w.Client.HGet(key, "Status").Val()
 	state = w.Client.HGet(key, "State").Val()
@@ -268,30 +209,7 @@ func thread(w *Wart, key string, source string) {
 	shouldStop := false
 	vm := otto.New()
 
-	vm.Set("redis", map[string]interface{}{
-		"Do": w.Client.Do,
-		"Blpop": func(call otto.FunctionCall) otto.Value {
-			timeout, err := call.Argument(0).ToInteger()
-			rKey := call.Argument(1).String()
-			if err == nil {
-				item := w.Client.BLPop(time.Duration(timeout)*time.Second, rKey)
-				if len(item.Val()) > 0 {
-					value, _ := vm.ToValue(item.Val()[1])
-					return value
-				}
-			}
-			value, _ := vm.ToValue("")
-			return value
-		},
-	})
-
-	vm.Set("http", map[string]interface{}{
-		"Get":      httpGet,
-		"Post":     httpPost,
-		"PostForm": httpPostForm,
-		"Put":      httpPut,
-		"Delete":   httpDelete,
-	})
+	applyLibrary(w, vm)
 	//Get whole script in memory.
 	_, err := vm.Run(source)
 	if err != nil {
@@ -349,4 +267,63 @@ func thread(w *Wart, key string, source string) {
 		}
 	}
 	w.Client.HSet(key, "State", STOPPED)
+}
+
+func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
+	if wart.Healthy {
+		key := wart.Cluster + ":Endpoints:" + html.EscapeString(r.URL.Path)
+		source := wart.Client.HGet(key, "Source").Val()
+		if source != "" {
+			vm := otto.New()
+			applyLibrary(wart, vm)
+			b, _ := ioutil.ReadAll(r.Body)
+			vm.Set("request", map[string]interface{}{
+				"Method": r.Method,
+				"Path":   html.EscapeString(r.URL.Path),
+				"Query":  r.URL.Query(),
+				"Body":   string(b),
+			})
+			vm.Set("response", map[string]interface{}{
+				"Write": func(value string) {
+					fmt.Fprintf(w, value)
+				},
+			})
+			//Get whole script in memory.
+			_, err := vm.Run(source)
+			if err != nil {
+				wart.Client.HSet(key, "Error", err.Error())
+				wart.Client.HSet(key, "ErrorTime", time.Now())
+				log.WithError(err).Error("Syntax error in script.")
+			}
+		} else {
+			fmt.Fprintf(w, "No Endpoint")
+		}
+	}
+}
+
+func applyLibrary(w *Wart, vm *otto.Otto) {
+	vm.Set("redis", map[string]interface{}{
+		"Do": w.Client.Do,
+		"Blpop": func(call otto.FunctionCall) otto.Value {
+			timeout, err := call.Argument(0).ToInteger()
+			rKey := call.Argument(1).String()
+			if err == nil {
+				item := w.Client.BLPop(time.Duration(timeout)*time.Second, rKey)
+				if len(item.Val()) > 0 {
+					value, _ := vm.ToValue(item.Val()[1])
+					return value
+				}
+			}
+			value, _ := vm.ToValue("")
+			return value
+		},
+	})
+
+	vm.Set("http", map[string]interface{}{
+		"Get":      httpGet,
+		"Post":     httpPost,
+		"PostForm": httpPostForm,
+		"Put":      httpPut,
+		"Delete":   httpDelete,
+	})
 }
