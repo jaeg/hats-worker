@@ -303,9 +303,16 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 
 func applyLibrary(w *Wart, vm *otto.Otto) {
 	vm.Set("redis", map[string]interface{}{
-		"Do": w.Client.Do,
-		"Do2": func(call otto.FunctionCall) otto.Value {
-			value, _ := vm.ToValue(0)
+		"Do2": w.Client.Do,
+		"Do": func(call otto.FunctionCall) otto.Value {
+			arguments := make([]interface{}, 0)
+
+			for i := range call.ArgumentList {
+				a, _ := call.Argument(i).ToString()
+				arguments = append(arguments, a)
+			}
+			v := w.Client.Do(arguments...)
+			value, _ := vm.ToValue(v.Val())
 			return value
 		},
 		"Blpop": func(call otto.FunctionCall) otto.Value {
