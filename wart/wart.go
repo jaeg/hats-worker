@@ -305,7 +305,8 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 	vm.Set("redis", map[string]interface{}{
 		"Do": w.Client.Do,
 		"Do2": func(call otto.FunctionCall) otto.Value {
-
+			value, _ := vm.ToValue(0)
+			return value
 		},
 		"Blpop": func(call otto.FunctionCall) otto.Value {
 			timeout, err := call.Argument(0).ToInteger()
