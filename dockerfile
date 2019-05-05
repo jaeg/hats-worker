@@ -1,5 +1,5 @@
 FROM centos
-COPY ./bin/wart /
+COPY ./bin/wart_unix /
 COPY ./bin/wart.config /
 
-CMD ["./wart", "--config=wart.config"]
+CMD ["/wart_unix", "--config=wart.config"]
