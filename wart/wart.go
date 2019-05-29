@@ -288,12 +288,28 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 					fmt.Fprintf(w, value)
 				},
 			})
-			//Get whole script in memory.
-			_, err := vm.Run(source)
-			if err != nil {
-				wart.Client.HSet(key, "Error", err.Error())
-				wart.Client.HSet(key, "ErrorTime", time.Now())
-				log.WithError(err).Error("Syntax error in script.")
+
+			//Split the script up
+			inputS := strings.Split(source, "<?")
+			for i := 0; i < len(inputS); i++ {
+				if strings.Contains(inputS[i], "?>") {
+					s := strings.Split(inputS[i], "?>")
+					script := s[0]
+					afterScript := s[1]
+					_, err := vm.Run(script)
+					if err != nil {
+						wart.Client.HSet(key, "Error", err.Error())
+						wart.Client.HSet(key, "ErrorTime", time.Now())
+						log.WithError(err).Error("Syntax error in script.")
+						fmt.Fprintf(w, err.Error())
+					}
+
+					if len(afterScript) > 0 {
+						fmt.Fprintf(w, afterScript)
+					}
+				} else {
+					fmt.Fprintf(w, inputS[i])
+				}
 			}
 		} else {
 			fmt.Fprintf(w, "No Endpoint")
