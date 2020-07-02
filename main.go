@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"redis-wart/wart"
 	"time"
+
+	"github.com/jaeg/redis-wart/wart"
 
 	_ "github.com/robertkrimen/otto/underscore"
 	log "github.com/sirupsen/logrus"
@@ -18,17 +20,15 @@ var cpuThreshold = flag.Float64("cpu-threshold", 1, "the load before unhealthy")
 var memThreshold = flag.Float64("mem-threshold", 90.0, "max memory usage percent before unhealthy")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 var host = flag.Bool("host", false, "Allow this wart to be an http host.")
+var healthPort = flag.String("health-port", "8787", "Port to run health metrics on")
 var configFile = flag.String("config", "", "Config file with wart settings")
 
 func main() {
+	var ctx = context.Background()
 	log.SetLevel(log.InfoLevel)
 	log.Debug("Wart Started")
 	flag.Parse()
-	w, err := wart.Create(*configFile, *redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval, *host)
-	if w.Client != nil {
-		defer w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "State", "offline")
-		defer log.Debug("Wart Stopped")
-	}
+	w, err := wart.Create(*configFile, *redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval, *host, *healthPort)
 
 	if err == nil {
 		//Health check thread
@@ -44,12 +44,17 @@ func main() {
 			if w.Healthy {
 				wart.CheckThreads(w)
 			}
-			w.Client.HSet(w.Cluster+":Warts:"+w.WartName, "Heartbeat", time.Now().UnixNano())
+			w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
 		}
 		log.Info("Wart has been disabled. Shutting down.")
 	} else {
 		log.WithError(err).Error("Failed to start wart.")
+	}
+
+	if w.Client != nil {
+		defer w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "State", "offline")
+		defer log.Debug("Wart Stopped")
 	}
 
 }
