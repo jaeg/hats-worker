@@ -13,8 +13,6 @@ Each wart in a cluster checks in redis for work to do.  If it finds a stopped th
 - wart-name - name of the wart   
 - redis-address - address to redis server  
 - redis-password - password for redis server   
-- cpu-threshold - cpu usage over this means the wart is unhealthy   
-- mem-threshold - memory usage over this mean the wart is unhealthy  
 - scripts - scripts to register  
 - run-now - run registered scripts on this wart immediately
 
@@ -41,8 +39,6 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
 Otto only include what's in the base Javascript definition and lacks certain useful libraries.  Those we recreated are:
 
 #### Wart
-- wart.Healthy
-  - returns bool
 - wart.Name
   - returns string
 - wart.Cluster

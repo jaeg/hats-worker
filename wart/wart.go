@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,8 +16,6 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/robertkrimen/otto"
 	_ "github.com/robertkrimen/otto/underscore"
-	"github.com/shirou/gopsutil/load"
-	"github.com/shirou/gopsutil/mem"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -36,16 +35,13 @@ type Wart struct {
 	Cluster         string
 	WartName        string
 	ScriptList      string
-	CpuThreshold    float64
-	MemThreshold    float64
-	HealthInterval  time.Duration
 	Client          *redis.Client
 	Healthy         bool
 	ThreadCount     int
 	SecondsTillDead int
 }
 
-func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, cpuThreshold float64, memThreshold float64, healthInterval time.Duration, host bool, healthPort string) (*Wart, error) {
+func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, healthPort string) (*Wart, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
 		if err == nil {
@@ -57,18 +53,17 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 				redisPassword = m["redis-password"].(string)
 				cluster = m["cluster"].(string)
 				wartName = m["name"].(string)
-				cpuThreshold = m["cpu-threshold"].(float64)
-				memThreshold = m["mem-threshold"].(float64)
-				t := m["health-interval"].(float64)
-				healthInterval = time.Duration(t)
 				host = m["host"].(bool)
 			}
 		}
 	}
 
+	if len(wartName) == 0 {
+		wartName = generateRandomName(10)
+	}
 	w := &Wart{RedisAddr: redisAddr, RedisPassword: redisPassword,
 		Cluster: cluster, WartName: wartName, ScriptList: scriptList,
-		CpuThreshold: cpuThreshold, MemThreshold: memThreshold, HealthInterval: healthInterval, Healthy: true, SecondsTillDead: 1}
+		Healthy: true, SecondsTillDead: 1}
 
 	if w.RedisAddr == "" {
 		return nil, errors.New("no redis address provided")
@@ -125,21 +120,13 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 	return w, nil
 }
 
-//CheckHealth Checks the health of the wart and puts it in redis.
-func CheckHealth(w *Wart) bool {
-	if getCPUHealth(w) || getMemoryHealth(w) {
-		w.Healthy = false
-		w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "State", "critical")
-		log.Error("Unhealthy")
-		return false
-	} else {
-		if w.Healthy == false {
-			log.Info("Health Restored")
-		}
-		w.Healthy = true
-		w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "State", "normal")
+func generateRandomName(length int) (out string) {
+	chars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+	for i := 0; i < length; i++ {
+		out += string(chars[rand.Intn(len(chars))])
 	}
-	return true
+
+	return
 }
 
 func IsEnabled(w *Wart) bool {
@@ -173,7 +160,11 @@ func CheckThreads(w *Wart) {
 					if int(elapsed.Seconds()) > deadSeconds && lastHeartbeat != 0 {
 						takeThread(w, threads[i])
 					}
+				} else {
+					log.WithError(err).Error("Error getting dead seconds")
 				}
+			} else {
+				log.WithError(err).Error("Error checking thread hang")
 			}
 		}
 	}
@@ -199,29 +190,13 @@ func loadScripts(w *Wart, scripts string) error {
 		w.Client.HSet(ctx, key, "State", STOPPED)
 		w.Client.HSet(ctx, key, "Heartbeat", 0)
 		w.Client.HSet(ctx, key, "Hang", 1)
+		w.Client.HSet(ctx, key, "DeadSeconds", 2)
 		w.Client.HSet(ctx, key, "Owner", "")
 		w.Client.HSet(ctx, key, "Error", "")
 		w.Client.HSet(ctx, key, "ErrorTime", "")
 	}
 
 	return nil
-}
-func getMemoryHealth(w *Wart) bool {
-	v, _ := mem.VirtualMemory()
-	w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName+":Health", "memory", v.UsedPercent)
-	if v.UsedPercent > w.MemThreshold {
-		return true
-	}
-	return false
-}
-
-func getCPUHealth(w *Wart) bool {
-	c, _ := load.Avg()
-	w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName+":Health", "cpu", c.Load1)
-	if c.Load1 > w.CpuThreshold {
-		return true
-	}
-	return false
 }
 
 func takeThread(w *Wart, key string) {
@@ -327,6 +302,7 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 					script := s[0]
 					afterScript := s[1]
 					_, err := vm.Run(script)
+
 					if err != nil {
 						wart.Client.HSet(ctx, key, "Error", err.Error())
 						wart.Client.HSet(ctx, key, "ErrorTime", time.Now())
@@ -385,7 +361,6 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 	})
 
 	vm.Set("wart", map[string]interface{}{
-		"Healthy": w.Healthy,
 		"Name":    w.WartName,
 		"Cluster": w.Cluster,
 	})

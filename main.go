@@ -14,7 +14,7 @@ import (
 var redisAddr = flag.String("redis-address", "", "the address for the main redis")
 var redisPassword = flag.String("redis-password", "", "the password for redis")
 var cluster = flag.String("cluster-name", "default", "name of cluster")
-var wartName = flag.String("wart-name", "noname", "the unique name of this wart")
+var wartName = flag.String("wart-name", "", "the unique name of this wart")
 var scriptList = flag.String("scripts", "", "comma delimited list of scripts to run")
 var cpuThreshold = flag.Float64("cpu-threshold", 1, "the load before unhealthy")
 var memThreshold = flag.Float64("mem-threshold", 90.0, "max memory usage percent before unhealthy")
@@ -26,19 +26,12 @@ var configFile = flag.String("config", "", "Config file with wart settings")
 func main() {
 	var ctx = context.Background()
 	log.SetLevel(log.InfoLevel)
-	log.Debug("Wart Started")
+
 	flag.Parse()
-	w, err := wart.Create(*configFile, *redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *cpuThreshold, *memThreshold, *healthInterval, *host, *healthPort)
-
+	w, err := wart.Create(*configFile, *redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *host, *healthPort)
+	log.Info("Wart Name: ", w.WartName)
+	log.Debug("Wart Started")
 	if err == nil {
-		//Health check thread
-		go func() {
-			for true {
-				wart.CheckHealth(w)
-				time.Sleep(w.HealthInterval * time.Second)
-			}
-		}()
-
 		//handle creating new threads.
 		for wart.IsEnabled(w) {
 			if w.Healthy {
