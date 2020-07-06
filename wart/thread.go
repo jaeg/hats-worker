@@ -70,12 +70,27 @@ func (tm *ThreadMeta) stop(w *Wart) {
 	}
 }
 
+func (tm *ThreadMeta) disable(w *Wart) {
+	if tm.getOwner(w) == w.WartName && !tm.Stopped {
+		log.Info("Disabling thread ", tm.Key)
+		tm.Stopped = true
+		w.Client.HSet(ctx, tm.Key, "State", STOPPED)
+		w.Client.HSet(ctx, tm.Key, "Status", DISABLED)
+		if tm.vm != nil {
+			tm.vm.Interrupt <- func() {
+				log.Error("Disabled thread")
+				return
+			}
+		}
+	}
+}
+
 func (tm *ThreadMeta) run(w *Wart) {
 	log.Info("Starting Thread ", tm.Key)
 
 	tm.vm = otto.New()
 	tm.vm.Interrupt = make(chan func(), 1)
-	applyLibrary(w, tm.vm)
+	applyLibrary(w, tm)
 	source := tm.getSource(w)
 	if source == "" {
 		log.Error("Source empty for thread ", tm.Key)

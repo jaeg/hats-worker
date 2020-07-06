@@ -46,6 +46,19 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - wart.ShuttingDown - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
   - returns bool
 
+#### Wart
+- thread.Key
+  - returns string
+- thread.State
+  - returns string
+- thread.Status
+  - returns string
+- thread.Stopped - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
+  - returns bool
+- thread.Disable() - Disables the thread completely
+  - returns nothing
+- thread.Stop() - Stops the thread causing another node to possibly pick it up
+  - returns nothing
 #### HTTP
 - http.Get(url)
   - returns {body:'',headers:[], status: 200}
@@ -95,5 +108,5 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - [x] - Redis wrapper
 - [x] - Http wrapper
 - [x] - Wart information i.e. Health, name, cluster
-- [ ] - Thread information i.e. Delay, State, Status
-- [ ] - Thread control i.e. Stop thread, disable thread.
+- [x] - Thread information i.e. Delay, State, Status
+- [x] - Thread control i.e. Stop thread, disable thread.

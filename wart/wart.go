@@ -223,16 +223,18 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 		key := wart.Cluster + ":Endpoints:" + html.EscapeString(r.URL.Path)
 		source := wart.Client.HGet(ctx, key, "Source").Val()
 		if source != "" {
-			vm := otto.New()
-			applyLibrary(wart, vm)
+			tm := &ThreadMeta{}
+			tm.vm = otto.New()
+
+			applyLibrary(wart, tm)
 			b, _ := ioutil.ReadAll(r.Body)
-			vm.Set("request", map[string]interface{}{
+			tm.vm.Set("request", map[string]interface{}{
 				"Method": r.Method,
 				"Path":   html.EscapeString(r.URL.Path),
 				"Query":  r.URL.Query(),
 				"Body":   string(b),
 			})
-			vm.Set("response", map[string]interface{}{
+			tm.vm.Set("response", map[string]interface{}{
 				"Write": func(value string) {
 					fmt.Fprintf(w, value)
 				},
@@ -245,7 +247,7 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 					s := strings.Split(inputS[i], "?>")
 					script := s[0]
 					afterScript := s[1]
-					_, err := vm.Run(script)
+					_, err := tm.vm.Run(script)
 
 					if err != nil {
 						wart.Client.HSet(ctx, key, "Error", err.Error())
@@ -267,8 +269,8 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func applyLibrary(w *Wart, vm *otto.Otto) {
-	vm.Set("redis", map[string]interface{}{
+func applyLibrary(w *Wart, tm *ThreadMeta) {
+	tm.vm.Set("redis", map[string]interface{}{
 		"Do2": w.Client.Do,
 		"Do": func(call otto.FunctionCall) otto.Value {
 			arguments := make([]interface{}, 0)
@@ -278,7 +280,7 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 				arguments = append(arguments, a)
 			}
 			v := w.Client.Do(ctx, arguments...)
-			value, _ := vm.ToValue(v.Val())
+			value, _ := tm.vm.ToValue(v.Val())
 			return value
 		},
 		"Blpop": func(call otto.FunctionCall) otto.Value {
@@ -287,16 +289,16 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 			if err == nil {
 				item := w.Client.BLPop(ctx, time.Duration(timeout)*time.Second, rKey)
 				if len(item.Val()) > 0 {
-					value, _ := vm.ToValue(item.Val()[1])
+					value, _ := tm.vm.ToValue(item.Val()[1])
 					return value
 				}
 			}
-			value, _ := vm.ToValue("")
+			value, _ := tm.vm.ToValue("")
 			return value
 		},
 	})
 
-	vm.Set("http", map[string]interface{}{
+	tm.vm.Set("http", map[string]interface{}{
 		"Get":      httpGet,
 		"Post":     httpPost,
 		"PostForm": httpPostForm,
@@ -304,9 +306,28 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 		"Delete":   httpDelete,
 	})
 
-	vm.Set("wart", map[string]interface{}{
+	tm.vm.Set("wart", map[string]interface{}{
 		"Name":         w.WartName,
 		"Cluster":      w.Cluster,
 		"ShuttingDown": w.Shutdown,
+	})
+
+	tm.vm.Set("thread", map[string]interface{}{
+		"Key":     tm.Key,
+		"Stopped": tm.Stopped,
+		"State": func() otto.Value {
+			value, _ := tm.vm.ToValue(tm.getState(w))
+			return value
+		},
+		"Status": func() otto.Value {
+			value, _ := tm.vm.ToValue(tm.getStatus(w))
+			return value
+		},
+		"Disable": func() {
+			tm.disable(w)
+		},
+		"Stop": func() {
+			tm.stop(w)
+		},
 	})
 }
