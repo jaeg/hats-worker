@@ -17,10 +17,8 @@ Each wart in a cluster checks in redis for work to do.  If it finds a stopped th
 - run-now - run registered scripts on this wart immediately
 
 ## Getting dependencies
-- install deps
-  - https://github.com/golang/dep
-- install dependencies
-  - `deps ensure`
+Requires a version of go that supports go.mod
+- go get
 
 ## Get up and running
 - Build it
