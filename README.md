@@ -46,12 +46,12 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - wart.ShuttingDown - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
   - returns bool
 
-#### Wart
+#### Thread
 - thread.Key
   - returns string
-- thread.State
+- thread.State() 
   - returns string
-- thread.Status
+- thread.Status()
   - returns string
 - thread.Stopped - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
   - returns bool
