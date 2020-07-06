@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -38,7 +37,10 @@ type Wart struct {
 	Client          *redis.Client
 	Healthy         bool
 	ThreadCount     int
+	threads         map[string]*ThreadMeta
 	SecondsTillDead int
+	VMStopChan      chan func()
+	shuttingDown    bool
 }
 
 func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, healthPort string) (*Wart, error) {
@@ -129,36 +131,58 @@ func generateRandomName(length int) (out string) {
 	return
 }
 
+func (w *Wart) Shutdown() {
+	w.shuttingDown = true
+	threads := getThreads(w)
+	for i := range threads {
+		threads[i].stop(w)
+	}
+}
+
+func getThreads(w *Wart) map[string]*ThreadMeta {
+	keys := w.Client.Keys(ctx, w.Cluster+":Threads:*").Val()
+	if w.threads == nil {
+		w.threads = make(map[string]*ThreadMeta, 0)
+	}
+
+	for i := range keys {
+		if w.threads[keys[i]] == nil {
+			w.threads[keys[i]] = &ThreadMeta{Key: keys[i], Stopped: true}
+		}
+	}
+	return w.threads
+}
+
 func IsEnabled(w *Wart) bool {
 	status := w.Client.HGet(ctx, w.Cluster+":Warts:"+w.WartName, "Status").Val()
-	if status == DISABLED {
+	if w.shuttingDown || status == DISABLED {
 		return false
 	}
 	return true
 }
 
 func CheckThreads(w *Wart) {
-	threads := w.Client.Keys(ctx, w.Cluster+":Threads:*").Val()
+	threads := getThreads(w)
 	for i := range threads {
-		threadStatus, threadState := getThreadStatus(w, threads[i])
+		threadStatus := threads[i].getStatus(w)
+		threadState := threads[i].getState(w)
 		if threadStatus != DISABLED {
 			if threadState == STOPPED {
-				takeThread(w, threads[i])
+				threads[i].take(w)
 				continue
 			}
 			//Check to see if thread is hung or fell over before its state was updated
-			lastHeartbeatString := w.Client.HGet(ctx, threads[i], "Heartbeat").Val()
-			lastHeartbeat, err := strconv.Atoi(lastHeartbeatString)
+			lastHeartbeat, err := threads[i].getHeartBeat(w)
 
 			if err == nil {
-				deadSeconds, err := w.Client.HGet(ctx, threads[i], "DeadSeconds").Int()
+				deadSeconds, err := threads[i].getDeadSeconds(w)
 				if err == nil {
 					if deadSeconds == 0 {
 						deadSeconds = w.SecondsTillDead
 					}
 					elapsed := time.Since(time.Unix(0, int64(lastHeartbeat)))
 					if int(elapsed.Seconds()) > deadSeconds && lastHeartbeat != 0 {
-						takeThread(w, threads[i])
+						threads[i].take(w)
 					}
 				} else {
 					log.WithError(err).Error("Error getting dead seconds")
@@ -168,11 +192,6 @@ func CheckThreads(w *Wart) {
 			}
 		}
 	}
-}
-func getThreadStatus(w *Wart, key string) (status string, state string) {
-	status = w.Client.HGet(ctx, key, "Status").Val()
-	state = w.Client.HGet(ctx, key, "State").Val()
-	return
 }
 
 func loadScripts(w *Wart, scripts string) error {
@@ -197,81 +216,6 @@ func loadScripts(w *Wart, scripts string) error {
 	}
 
 	return nil
-}
-
-func takeThread(w *Wart, key string) {
-	log.Info("Taking thread ", key)
-	source := w.Client.HGet(ctx, key, "Source").Val()
-	w.Client.HSet(ctx, key, "State", RUNNING)
-	w.Client.HSet(ctx, key, "Heartbeat", time.Now().UnixNano())
-	w.Client.HSet(ctx, key, "Owner", w.WartName)
-	go thread(w, key, source)
-}
-func thread(w *Wart, key string, source string) {
-	log.Info("Starting Thread ", key)
-	shouldStop := false
-	vm := otto.New()
-	defer log.Info("Hello")
-	applyLibrary(w, vm)
-	//Get whole script in memory.
-	_, err := vm.Run(source)
-	if err != nil {
-		w.Client.HSet(ctx, key, "State", CRASHED)
-		w.Client.HSet(ctx, key, "Status", DISABLED)
-		w.Client.HSet(ctx, key, "Error", err.Error())
-		w.Client.HSet(ctx, key, "ErrorTime", time.Now())
-		log.WithError(err).Error("Syntax error in script.")
-		return
-	}
-
-	//Run init script
-	_, err = vm.Run("if (init != undefined) {init()}")
-	if err != nil {
-		w.Client.HSet(ctx, key, "State", CRASHED)
-		w.Client.HSet(ctx, key, "Status", DISABLED)
-		w.Client.HSet(ctx, key, "Error", err.Error())
-		w.Client.HSet(ctx, key, "ErrorTime", time.Now())
-		log.WithError(err).Error("Error running init() in script")
-		return
-	}
-
-	hang, hangErr := w.Client.HGet(ctx, key, "Hang").Int()
-	if hangErr == nil {
-		for w.Healthy && !shouldStop {
-			w.Client.HSet(ctx, key, "Heartbeat", time.Now().UnixNano())
-
-			//Get status and stop if disabled.
-			status := w.Client.HGet(ctx, key, "Status")
-			owner := w.Client.HGet(ctx, key, "Owner")
-			if status.Val() == DISABLED {
-				log.Warn(key, "Was disabled.  Stopping thread.")
-				w.Client.HSet(ctx, key, "State", STOPPED)
-				shouldStop = true
-				continue
-			}
-
-			if owner.Val() != w.WartName {
-				shouldStop = true
-				continue
-			}
-
-			_, err := vm.Run("if (main != undefined) {main()}")
-
-			if err != nil {
-				w.Client.HSet(ctx, key, "State", CRASHED)
-				w.Client.HSet(ctx, key, "Status", DISABLED)
-				w.Client.HSet(ctx, key, "Error", err.Error())
-				w.Client.HSet(ctx, key, "ErrorTime", time.Now())
-				log.WithError(err).Error("Error running main() in script")
-				return
-			}
-
-			time.Sleep(time.Duration(hang))
-		}
-	} else {
-		log.WithError(hangErr).Error("Error hanging")
-	}
-	w.Client.HSet(ctx, key, "State", STOPPED)
 }
 
 func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {

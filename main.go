@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/jaeg/redis-wart/wart"
@@ -29,6 +32,15 @@ func main() {
 
 	flag.Parse()
 	w, err := wart.Create(*configFile, *redisAddr, *redisPassword, *cluster, *wartName, *scriptList, *host, *healthPort)
+
+	//Capture sigterm
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		w.Shutdown()
+	}()
+
 	log.Info("Wart Name: ", w.WartName)
 	log.Debug("Wart Started")
 	if err == nil {
@@ -40,7 +52,7 @@ func main() {
 			w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
 		}
-		log.Info("Wart has been disabled. Shutting down.")
+		log.Info("Shutting down.")
 	} else {
 		log.WithError(err).Error("Failed to start wart.")
 	}
