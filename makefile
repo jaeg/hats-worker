@@ -6,7 +6,7 @@
  GOGET=$(GOCMD) get
  BINARY_NAME=wart
  BINARY_UNIX=$(BINARY_NAME)_unix
- VERSION=0.0.0
+ VERSION=0.1.0
 
  all: test build
  build:
@@ -18,6 +18,8 @@
  clean:
 				 $(GOCLEAN)
 				 rm -f ./bin/$(BINARY_NAME)
+ run: build
+	./bin/wart --config wart1.config
 image: build-linux
 	docker build ./ -t jaeg/redis-wart:latest
 	docker tag jaeg/redis-wart:latest jaeg/redis-wart:$(VERSION)

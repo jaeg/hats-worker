@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,6 +28,7 @@ var healthPort = flag.String("health-port", "8787", "Port to run health metrics 
 var configFile = flag.String("config", "", "Config file with wart settings")
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	var ctx = context.Background()
 	log.SetLevel(log.InfoLevel)
 
