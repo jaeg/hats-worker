@@ -22,7 +22,7 @@
 	./bin/wart --config wart1.config
 image: build-linux
 	docker build ./ -t jaeg/redis-wart:latest
-	docker tag jaeg/redis-wart:latest jaeg/redis-wart:$(VERSION)
+	docker tag jaeg/redis-wart:latest jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)-$(shell git rev-parse --short HEAD)
 publish:
 	docker push jaeg/redis-wart:latest
-	docker push jaeg/redis-wart:$(VERSION)
+	docker push jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)-$(shell git rev-parse --short HEAD)

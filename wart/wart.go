@@ -305,7 +305,8 @@ func applyLibrary(w *Wart, vm *otto.Otto) {
 	})
 
 	vm.Set("wart", map[string]interface{}{
-		"Name":    w.WartName,
-		"Cluster": w.Cluster,
+		"Name":         w.WartName,
+		"Cluster":      w.Cluster,
+		"ShuttingDown": w.Shutdown,
 	})
 }

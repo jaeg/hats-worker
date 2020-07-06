@@ -43,6 +43,8 @@ Otto only include what's in the base Javascript definition and lacks certain use
   - returns string
 - wart.Cluster
   - returns string
+- wart.ShuttingDown - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
+  - returns bool
 
 #### HTTP
 - http.Get(url)
