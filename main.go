@@ -43,9 +43,9 @@ func main() {
 		w.Shutdown()
 	}()
 
-	log.Info("Wart Name: ", w.WartName)
-	log.Debug("Wart Started")
 	if err == nil {
+		log.Info("Wart Name: ", w.WartName)
+		log.Debug("Wart Started")
 		//handle creating new threads.
 		for wart.IsEnabled(w) {
 			if w.Healthy {
@@ -55,13 +55,11 @@ func main() {
 			time.Sleep(time.Second)
 		}
 		log.Info("Shutting down.")
+		if w.Client != nil {
+			defer w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "State", "offline")
+			defer log.Debug("Wart Stopped")
+		}
 	} else {
 		log.WithError(err).Error("Failed to start wart.")
 	}
-
-	if w.Client != nil {
-		defer w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "State", "offline")
-		defer log.Debug("Wart Stopped")
-	}
-
 }
