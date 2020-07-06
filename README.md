@@ -24,13 +24,18 @@ Each wart in a cluster checks in redis for work to do.  If it finds a stopped th
 
 ## Get up and running
 - Build it
-  - `go build`
+  - `make build`
+- Build and run it
+  - `make run`
 - You can get started using an example config as such
-  -  `./redis-wart --config wart1.config`
+  -  `./bin/wart --config wart1.config`
 - Or you can pass in through runtime params  
-  - `./redis-wart --redis-address=<address> --redis-password=<password> --wart-name=wart1`
+  - `./bin/wart --redis-address=<address> --redis-password=<password> --wart-name=wart1`
 - Or run through a docker container
   - `docker run jaeg/redis-wart:latest --redis-address=<address> --redis-password=<password> --wart-name=wart1`
+- You can also tell it to load a script on start like this
+  - `./bin/wart --redis-address=<address> --redis-password=<password> --wart-name=wart1 --scripts examples/hello.js`
+  - `docker run jaeg/redis-wart:latest --redis-address=<address> --redis-password=<password> --wart-name=wart1 --scripts examples/hello.js`
 
 ## Javascript implementation
 Wart's Javascript implementation is based on [Otto](https://github.com/robertkrimen/otto).  Each thread maintains its own scope.  When a thread starts it runs the entire script.  It then runs `init()` if present in the source code.  If present a thread will call `main()` after confirming the thread is still running.

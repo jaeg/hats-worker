@@ -5,6 +5,7 @@ import (
 
 	"github.com/alicebob/miniredis"
 	"github.com/go-redis/redis"
+	_ "github.com/robertkrimen/otto/underscore"
 )
 
 func TestStartErrorWithNoRedisAddress(t *testing.T) {
