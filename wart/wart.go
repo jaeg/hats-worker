@@ -405,7 +405,7 @@ func applyLibraryJob(w *Wart, tm *JobMeta) {
 		"ShuttingDown": w.Shutdown,
 	})
 
-	tm.vm.Set("thread", map[string]interface{}{
+	tm.vm.Set("job", map[string]interface{}{
 		"Key":     tm.Key,
 		"Stopped": tm.Stopped,
 		"State": func() otto.Value {
@@ -418,9 +418,6 @@ func applyLibraryJob(w *Wart, tm *JobMeta) {
 		},
 		"Disable": func() {
 			tm.disable(w)
-		},
-		"Stop": func() {
-			tm.stop(w)
 		},
 	})
 }
