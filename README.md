@@ -6,7 +6,7 @@
 **S** - System  
 A simple interpreter designed to process data sitting in redis.
 
-Each wart in a cluster checks in redis for work to do.  If it finds a stopped thread or a dead thread it takes the thread and runs it locally.
+Each wart in a cluster checks in redis for work to do.  If it finds a stopped thread or a dead thread it takes the thread and runs it locally. There are also jobs which instead of continuously running they execute on a cron schedule.
 
 ## Runtime params
 - cluster-name - name of cluster   
@@ -62,6 +62,19 @@ Otto only include what's in the base Javascript definition and lacks certain use
   - returns nothing
 - thread.Stop() - Stops the thread causing another node to possibly pick it up
   - returns nothing
+
+#### Job
+- job.Key
+  - returns string
+- job.State() 
+  - returns string
+- thread.Status()
+  - returns string
+- thread.Stopped - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
+  - returns bool
+- thread.Disable() - Disables the thread completely
+  - returns nothing
+
 #### HTTP
 - http.Get(url)
   - returns {body:'',headers:[], status: 200}
