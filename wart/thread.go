@@ -161,7 +161,7 @@ func (tm *ThreadMeta) run(w *Wart) {
 		}
 
 		//Thread has ended, run any cleanup there might be.
-		_, err := tm.vm.Run("if (typeof init === 'function') {cleanup()}")
+		_, err := tm.vm.Run("if (typeof cleanup === 'function') {cleanup()}")
 		if err != nil {
 			log.WithError(err).Error("Error cleaning up thread: ", tm.Key)
 		}

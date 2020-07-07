@@ -15,6 +15,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/robertkrimen/otto"
 	_ "github.com/robertkrimen/otto/underscore"
+	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,6 +39,7 @@ type Wart struct {
 	Healthy         bool
 	ThreadCount     int
 	threads         map[string]*ThreadMeta
+	jobs            map[string]*JobMeta
 	SecondsTillDead int
 	VMStopChan      chan func()
 	shuttingDown    bool
@@ -153,6 +155,20 @@ func getThreads(w *Wart) map[string]*ThreadMeta {
 	return w.threads
 }
 
+func getJobs(w *Wart) map[string]*JobMeta {
+	keys := w.Client.Keys(ctx, w.Cluster+":Jobs:*").Val()
+	if w.jobs == nil {
+		w.jobs = make(map[string]*JobMeta, 0)
+	}
+
+	for i := range keys {
+		if w.jobs[keys[i]] == nil {
+			w.jobs[keys[i]] = &JobMeta{Key: keys[i], Stopped: true}
+		}
+	}
+	return w.jobs
+}
+
 func IsEnabled(w *Wart) bool {
 	status := w.Client.HGet(ctx, w.Cluster+":Warts:"+w.WartName, "Status").Val()
 	if w.shuttingDown || status == DISABLED {
@@ -189,6 +205,20 @@ func CheckThreads(w *Wart) {
 				}
 			} else {
 				log.WithError(err).Error("Error checking thread hang")
+			}
+		}
+	}
+}
+
+func CheckJobs(w *Wart) {
+	jobs := getJobs(w)
+	for i := range jobs {
+		jobStatus := jobs[i].getStatus(w)
+		jobState := jobs[i].getState(w)
+		if jobStatus != DISABLED {
+			if jobState == STOPPED {
+				jobs[i].schedule(w)
+				continue
 			}
 		}
 	}
@@ -330,4 +360,70 @@ func applyLibrary(w *Wart, tm *ThreadMeta) {
 			tm.stop(w)
 		},
 	})
+}
+
+func applyLibraryJob(w *Wart, tm *JobMeta) {
+	tm.vm.Set("redis", map[string]interface{}{
+		"Do2": w.Client.Do,
+		"Do": func(call otto.FunctionCall) otto.Value {
+			arguments := make([]interface{}, 0)
+
+			for i := range call.ArgumentList {
+				a, _ := call.Argument(i).ToString()
+				arguments = append(arguments, a)
+			}
+			v := w.Client.Do(ctx, arguments...)
+			value, _ := tm.vm.ToValue(v.Val())
+			return value
+		},
+		"Blpop": func(call otto.FunctionCall) otto.Value {
+			timeout, err := call.Argument(0).ToInteger()
+			rKey := call.Argument(1).String()
+			if err == nil {
+				item := w.Client.BLPop(ctx, time.Duration(timeout)*time.Second, rKey)
+				if len(item.Val()) > 0 {
+					value, _ := tm.vm.ToValue(item.Val()[1])
+					return value
+				}
+			}
+			value, _ := tm.vm.ToValue("")
+			return value
+		},
+	})
+
+	tm.vm.Set("http", map[string]interface{}{
+		"Get":      httpGet,
+		"Post":     httpPost,
+		"PostForm": httpPostForm,
+		"Put":      httpPut,
+		"Delete":   httpDelete,
+	})
+
+	tm.vm.Set("wart", map[string]interface{}{
+		"Name":         w.WartName,
+		"Cluster":      w.Cluster,
+		"ShuttingDown": w.Shutdown,
+	})
+
+	tm.vm.Set("thread", map[string]interface{}{
+		"Key":     tm.Key,
+		"Stopped": tm.Stopped,
+		"State": func() otto.Value {
+			value, _ := tm.vm.ToValue(tm.getState(w))
+			return value
+		},
+		"Status": func() otto.Value {
+			value, _ := tm.vm.ToValue(tm.getStatus(w))
+			return value
+		},
+		"Disable": func() {
+			tm.disable(w)
+		},
+		"Stop": func() {
+			tm.stop(w)
+		},
+	})
+}
+func newWithSeconds() *cron.Cron {
+	return cron.New(cron.WithParser(cron.NewParser(cron.Second|cron.Minute|cron.Hour|cron.Dom|cron.Month|cron.DowOptional|cron.Descriptor)), cron.WithChain())
 }

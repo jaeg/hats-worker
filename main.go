@@ -50,6 +50,7 @@ func main() {
 		for wart.IsEnabled(w) {
 			if w.Healthy {
 				wart.CheckThreads(w)
+				wart.CheckJobs(w)
 			}
 			w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
