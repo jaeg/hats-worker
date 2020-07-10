@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -43,6 +44,10 @@ type Wart struct {
 	SecondsTillDead int
 	VMStopChan      chan func()
 	shuttingDown    bool
+}
+
+type TaskInterface interface {
+	getVM() *otto.Otto
 }
 
 func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, healthPort string) (*Wart, error) {
@@ -299,8 +304,8 @@ func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func applyLibrary(w *Wart, tm *ThreadMeta) {
-	tm.vm.Set("redis", map[string]interface{}{
+func applyLibrary(w *Wart, tm TaskInterface) {
+	tm.getVM().Set("redis", map[string]interface{}{
 		"Do2": w.Client.Do,
 		"Do": func(call otto.FunctionCall) otto.Value {
 			arguments := make([]interface{}, 0)
@@ -310,7 +315,7 @@ func applyLibrary(w *Wart, tm *ThreadMeta) {
 				arguments = append(arguments, a)
 			}
 			v := w.Client.Do(ctx, arguments...)
-			value, _ := tm.vm.ToValue(v.Val())
+			value, _ := tm.getVM().ToValue(v.Val())
 			return value
 		},
 		"Blpop": func(call otto.FunctionCall) otto.Value {
@@ -319,16 +324,16 @@ func applyLibrary(w *Wart, tm *ThreadMeta) {
 			if err == nil {
 				item := w.Client.BLPop(ctx, time.Duration(timeout)*time.Second, rKey)
 				if len(item.Val()) > 0 {
-					value, _ := tm.vm.ToValue(item.Val()[1])
+					value, _ := tm.getVM().ToValue(item.Val()[1])
 					return value
 				}
 			}
-			value, _ := tm.vm.ToValue("")
+			value, _ := tm.getVM().ToValue("")
 			return value
 		},
 	})
 
-	tm.vm.Set("http", map[string]interface{}{
+	tm.getVM().Set("http", map[string]interface{}{
 		"Get":      httpGet,
 		"Post":     httpPost,
 		"PostForm": httpPostForm,
@@ -336,91 +341,99 @@ func applyLibrary(w *Wart, tm *ThreadMeta) {
 		"Delete":   httpDelete,
 	})
 
-	tm.vm.Set("wart", map[string]interface{}{
+	tm.getVM().Set("wart", map[string]interface{}{
 		"Name":         w.WartName,
 		"Cluster":      w.Cluster,
 		"ShuttingDown": w.Shutdown,
 	})
 
-	tm.vm.Set("thread", map[string]interface{}{
-		"Key":     tm.Key,
-		"Stopped": tm.Stopped,
-		"State": func() otto.Value {
-			value, _ := tm.vm.ToValue(tm.getState(w))
+	tm.getVM().Set("env", map[string]interface{}{
+		"Get": func(call otto.FunctionCall) otto.Value {
+			envName, _ := call.Argument(0).ToString()
+			if envName == "undefined" {
+				return otto.New().MakeSyntaxError("Missing parameter")
+			}
+			envValue, exists := os.LookupEnv(envName)
+			var value otto.Value
+			if exists {
+				value, _ = tm.getVM().ToValue(envValue)
+			} else {
+				value = otto.UndefinedValue()
+			}
+
 			return value
 		},
-		"Status": func() otto.Value {
-			value, _ := tm.vm.ToValue(tm.getStatus(w))
-			return value
+		"Set": func(call otto.FunctionCall) otto.Value {
+			envName, _ := call.Argument(0).ToString()
+			envValue, _ := call.Argument(1).ToString()
+			if envName == "undefined" || envValue == "undefined" {
+				return otto.New().MakeSyntaxError("Missing parameter")
+			}
+
+			err := os.Setenv(envName, envValue)
+			if err != nil {
+				return otto.New().MakeSyntaxError("Error setting env")
+			}
+
+			return otto.NullValue()
 		},
-		"Disable": func() {
-			tm.disable(w)
-		},
-		"Stop": func() {
-			tm.stop(w)
+		"Unset": func(call otto.FunctionCall) otto.Value {
+			envName, _ := call.Argument(0).ToString()
+			if envName == "undefined" {
+				return otto.New().MakeSyntaxError("Missing parameter")
+			}
+
+			err := os.Unsetenv(envName)
+			if err != nil {
+				return otto.New().MakeSyntaxError("Error setting env")
+			}
+
+			return otto.NullValue()
 		},
 	})
+
+	switch tm.(type) {
+	case *JobMeta:
+		t := tm.(*JobMeta)
+		t.vm.Set("job", map[string]interface{}{
+			"Key":     t.Key,
+			"Stopped": t.Stopped,
+			"State": func() otto.Value {
+				value, _ := t.vm.ToValue(t.getState(w))
+				return value
+			},
+			"Status": func() otto.Value {
+				value, _ := t.vm.ToValue(t.getStatus(w))
+				return value
+			},
+			"Disable": func() {
+				t.disable(w)
+			},
+		})
+	case *ThreadMeta:
+		t := tm.(*ThreadMeta)
+		tm.getVM().Set("thread", map[string]interface{}{
+			"Key":     t.Key,
+			"Stopped": t.Stopped,
+			"State": func() otto.Value {
+				value, _ := t.vm.ToValue(t.getState(w))
+				return value
+			},
+			"Status": func() otto.Value {
+				value, _ := t.vm.ToValue(t.getStatus(w))
+				return value
+			},
+			"Disable": func() {
+				t.disable(w)
+			},
+			"Stop": func() {
+				t.stop(w)
+			},
+		})
+	}
+
 }
 
-func applyLibraryJob(w *Wart, tm *JobMeta) {
-	tm.vm.Set("redis", map[string]interface{}{
-		"Do2": w.Client.Do,
-		"Do": func(call otto.FunctionCall) otto.Value {
-			arguments := make([]interface{}, 0)
-
-			for i := range call.ArgumentList {
-				a, _ := call.Argument(i).ToString()
-				arguments = append(arguments, a)
-			}
-			v := w.Client.Do(ctx, arguments...)
-			value, _ := tm.vm.ToValue(v.Val())
-			return value
-		},
-		"Blpop": func(call otto.FunctionCall) otto.Value {
-			timeout, err := call.Argument(0).ToInteger()
-			rKey := call.Argument(1).String()
-			if err == nil {
-				item := w.Client.BLPop(ctx, time.Duration(timeout)*time.Second, rKey)
-				if len(item.Val()) > 0 {
-					value, _ := tm.vm.ToValue(item.Val()[1])
-					return value
-				}
-			}
-			value, _ := tm.vm.ToValue("")
-			return value
-		},
-	})
-
-	tm.vm.Set("http", map[string]interface{}{
-		"Get":      httpGet,
-		"Post":     httpPost,
-		"PostForm": httpPostForm,
-		"Put":      httpPut,
-		"Delete":   httpDelete,
-	})
-
-	tm.vm.Set("wart", map[string]interface{}{
-		"Name":         w.WartName,
-		"Cluster":      w.Cluster,
-		"ShuttingDown": w.Shutdown,
-	})
-
-	tm.vm.Set("job", map[string]interface{}{
-		"Key":     tm.Key,
-		"Stopped": tm.Stopped,
-		"State": func() otto.Value {
-			value, _ := tm.vm.ToValue(tm.getState(w))
-			return value
-		},
-		"Status": func() otto.Value {
-			value, _ := tm.vm.ToValue(tm.getStatus(w))
-			return value
-		},
-		"Disable": func() {
-			tm.disable(w)
-		},
-	})
-}
 func newWithSeconds() *cron.Cron {
 	return cron.New(cron.WithParser(cron.NewParser(cron.Second|cron.Minute|cron.Hour|cron.Dom|cron.Month|cron.DowOptional|cron.Descriptor)), cron.WithChain())
 }

@@ -1,0 +1,5 @@
+console.log("Getting initially: ",env.Get("asfsdfs"))
+console.log("Setting to 'Value':",env.Set("asfsdfs","Value"))
+console.log("Getting back: ",env.Get("asfsdfs"))
+console.log("Deleting: ",env.Unset("asfsdfs"))
+console.log("Getting again: ",env.Get("asfsdfs"))

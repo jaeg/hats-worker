@@ -14,6 +14,10 @@ type ThreadMeta struct {
 	vm      *otto.Otto
 }
 
+func (tm *ThreadMeta) getVM() *otto.Otto {
+	return tm.vm
+}
+
 func (tm *ThreadMeta) getStatus(w *Wart) (status string) {
 	status = w.Client.HGet(ctx, tm.Key, "Status").Val()
 	return

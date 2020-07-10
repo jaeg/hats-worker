@@ -17,6 +17,10 @@ type JobMeta struct {
 	cronString string
 }
 
+func (jm *JobMeta) getVM() *otto.Otto {
+	return jm.vm
+}
+
 func (jm *JobMeta) getStatus(w *Wart) (status string) {
 	status = w.Client.HGet(ctx, jm.Key, "Status").Val()
 	return
@@ -92,7 +96,7 @@ func (jm *JobMeta) run(w *Wart) {
 
 		jm.vm = otto.New()
 		jm.vm.Interrupt = make(chan func(), 1)
-		applyLibraryJob(w, jm)
+		applyLibrary(w, jm)
 		source := jm.getSource(w)
 		if source == "" {
 			log.Error("Source empty for thread ", jm.Key)
