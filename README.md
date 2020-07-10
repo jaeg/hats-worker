@@ -38,8 +38,15 @@ Requires a version of go that supports go.mod
 ## Javascript implementation
 Wart's Javascript implementation is based on [Otto](https://github.com/robertkrimen/otto).  Each thread maintains its own scope.  When a thread starts it runs the entire script.  It then runs `init()` if present in the source code.  If present a thread will call `main()` after confirming the thread is still running.
 
-### Extra Javascript Functions
-Otto only include what's in the base Javascript definition and lacks certain useful libraries.  Those we recreated are:
+### Extra Functions Available to scripts
+#### Env
+- env.Get(key)
+  - returns string or undefined if key does not exist
+- env.Set(key,value)
+  - returns null or error if there is one
+- env.Unset(key)
+  - returns null or error if there is one
+
 
 #### Wart
 - wart.Name
@@ -97,6 +104,15 @@ Otto only include what's in the base Javascript definition and lacks certain use
 - response.Write(value)
   - Used when a wart is in endpoint mode.  Writes to the response body of an http request.
   - returns nothing.
+- response.Error(errorString, statusCode)
+  - Used when a wart is in endpoint mode.  Writes an error in response to the endpoint.
+  - returns nothing.  
+- response.SetContentType(type)
+  - Used when a wart is in endpoint mode.  Sets the content type header.
+  - returns nothing.  
+- response.SetHeader(key,value)
+  - Used when a wart is in endpoint mode.  Sets the header specfied in key to the value.
+  - returns nothing.  
 
 #### Request
 - request.Method
@@ -107,6 +123,9 @@ Otto only include what's in the base Javascript definition and lacks certain use
   - returns {<name>:[values]}
 - request.Body
   - returns string
+- request.GetHeader(key)
+  - Used when a wart is in endpoint mode.  Gets value from header.
+  - returns value.  
 
 ### Wart Todo
 - [x] - Run a thread from redis.

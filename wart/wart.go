@@ -255,51 +255,11 @@ func loadScripts(w *Wart, scripts string) error {
 
 func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	if wart.Healthy {
-		key := wart.Cluster + ":Endpoints:" + html.EscapeString(r.URL.Path)
-		source := wart.Client.HGet(ctx, key, "Source").Val()
-		if source != "" {
-			tm := &ThreadMeta{}
-			tm.vm = otto.New()
-
-			applyLibrary(wart, tm)
-			b, _ := ioutil.ReadAll(r.Body)
-			tm.vm.Set("request", map[string]interface{}{
-				"Method": r.Method,
-				"Path":   html.EscapeString(r.URL.Path),
-				"Query":  r.URL.Query(),
-				"Body":   string(b),
-			})
-			tm.vm.Set("response", map[string]interface{}{
-				"Write": func(value string) {
-					fmt.Fprintf(w, value)
-				},
-			})
-
-			//Split the script up
-			inputS := strings.Split(source, "<?")
-			for i := 0; i < len(inputS); i++ {
-				if strings.Contains(inputS[i], "?>") {
-					s := strings.Split(inputS[i], "?>")
-					script := s[0]
-					afterScript := s[1]
-					_, err := tm.vm.Run(script)
-
-					if err != nil {
-						wart.Client.HSet(ctx, key, "Error", err.Error())
-						wart.Client.HSet(ctx, key, "ErrorTime", time.Now())
-						log.WithError(err).Error("Syntax error in script.")
-						fmt.Fprintf(w, err.Error())
-					}
-
-					if len(afterScript) > 0 {
-						fmt.Fprintf(w, afterScript)
-					}
-				} else {
-					fmt.Fprintf(w, inputS[i])
-				}
-			}
+		em := getEndpoint(wart, html.EscapeString(r.URL.Path))
+		if em != nil {
+			em.run(wart, w, r)
 		} else {
-			fmt.Fprintf(w, "No Endpoint")
+			http.Error(w, "Endpoint not found", http.StatusNotFound)
 		}
 	}
 }
