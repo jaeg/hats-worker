@@ -12,18 +12,19 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//EndpointMeta represents an endpoint
 type EndpointMeta struct {
 	Key     string
 	Stopped bool
 	vm      *otto.Otto
 }
 
-func (tm *EndpointMeta) getVM() *otto.Otto {
-	return tm.vm
+func (em *EndpointMeta) getVM() *otto.Otto {
+	return em.vm
 }
 
-func (tm *EndpointMeta) getSource(w *Wart) (source string) {
-	source = w.Client.HGet(ctx, tm.Key, "Source").Val()
+func (em *EndpointMeta) getSource(w *Wart) (source string) {
+	source = w.Client.HGet(ctx, em.Key, "Source").Val()
 	return
 }
 

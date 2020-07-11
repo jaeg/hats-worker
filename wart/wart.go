@@ -301,6 +301,10 @@ func applyLibrary(w *Wart, tm TaskInterface) {
 		"Delete":   httpDelete,
 	})
 
+	tm.getVM().Set("sql", map[string]interface{}{
+		"New": newSQLWrapper,
+	})
+
 	tm.getVM().Set("wart", map[string]interface{}{
 		"Name":         w.WartName,
 		"Cluster":      w.Cluster,
