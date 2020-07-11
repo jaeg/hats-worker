@@ -26,3 +26,6 @@ image: build-linux
 publish:
 	docker push jaeg/redis-wart:latest
 	docker push jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)-$(shell git rev-parse --short HEAD)
+release:
+	docker tag jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)-$(shell git rev-parse --short HEAD) jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)
+	docker push jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)
