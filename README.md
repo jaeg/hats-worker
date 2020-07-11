@@ -127,6 +127,20 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
   - Used when a wart is in endpoint mode.  Gets value from header.
   - returns value.  
 
+#### SQL
+- sql.New(connectionString, driverType)
+  - supported driver types: mysql
+  - returns db interface
+- db.Ping()
+  - returns an error if it fails to ping the db
+- db.Query(query, arguments...)
+  - returns rows or nil if error
+- db.Exec(query, arguments...)
+  - returns number of impacted rows or undefined if error
+- db.Close()
+  - returns error if any
+ 
+
 ### Wart Todo
 - [x] - Run a thread from redis.
 - [x] - Create thread from file.

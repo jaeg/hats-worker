@@ -2,10 +2,7 @@ package wart
 
 import (
 	"database/sql"
-	"fmt"
-	"reflect"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/robertkrimen/otto"
 
 	//This is how you import sql drivers
@@ -13,12 +10,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// SQLWrapper wrapper struct
 type SQLWrapper struct {
-	db *sqlx.DB
+	db *sql.DB
 }
 
 func newSQLWrapper(connectionString string, driverName string) *SQLWrapper {
-	db, err := sqlx.Open(driverName, connectionString)
+	db, err := sql.Open(driverName, connectionString)
 	sw := &SQLWrapper{db: db}
 	if err != nil {
 		log.WithError(err).Error("Failed to open db")
@@ -29,6 +27,7 @@ func newSQLWrapper(connectionString string, driverName string) *SQLWrapper {
 	return sw
 }
 
+// Ping - library implementation of sql pings
 func (sw *SQLWrapper) Ping() error {
 	err := sw.db.Ping()
 	if err != nil {
@@ -37,7 +36,8 @@ func (sw *SQLWrapper) Ping() error {
 	return err
 }
 
-func (sw *SQLWrapper) close() error {
+// Close - library implementation of sql close
+func (sw *SQLWrapper) Close() error {
 	err := sw.db.Close()
 	if err != nil {
 		log.WithError(err).Error("Failed to close db")
@@ -45,65 +45,77 @@ func (sw *SQLWrapper) close() error {
 	return err
 }
 
-func (sw *SQLWrapper) Query(query string, args ...interface{}) []map[string]otto.Value {
-
-	rows, err := sw.db.Queryx(query, args...)
+//Exec - library implementation of sql queries
+func (sw *SQLWrapper) Exec(query string, args ...interface{}) otto.Value {
+	statement, err := sw.db.Prepare(query)
 	if err != nil {
-		log.WithError(err).Error("Failed to query db")
+		log.WithError(err).Error("Failed to prepare statement")
+		return otto.UndefinedValue()
 	}
 
-	outputRows := make([]map[string]otto.Value, 0)
+	defer statement.Close()
+	res, err := statement.Exec(args...)
+	if err != nil {
+		log.WithError(err).Error("Error executing query")
+		return otto.UndefinedValue()
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		log.WithError(err).Error("Error getting rows affected")
+		return otto.UndefinedValue()
+	}
 
-	//Figure out the types of the fields..
-	typeMap := make(map[string]reflect.Type, 0)
+	value, _ := otto.ToValue(rows)
+	return value
+}
+
+// Query - library implementation of sql queries
+func (sw *SQLWrapper) Query(query string, args ...interface{}) []map[string]otto.Value {
+	outputRows := make([]map[string]otto.Value, 0)
+	statement, err := sw.db.Prepare(query)
+	if err != nil {
+		log.WithError(err).Error("Failed to prepare statement")
+		return nil
+	}
+
+	defer statement.Close()
+	rows, err := statement.Query(args...)
+	if err != nil {
+		log.WithError(err).Error("Failed to query db")
+		return nil
+	}
+
 	cols, err := rows.Columns()
 	if err != nil {
 		log.WithError(err).Error("Failed to get columns")
 		return nil
 	}
-	colTypes, err := rows.ColumnTypes()
-	if err != nil {
-		log.WithError(err).Error("Failed to get columns")
-		return nil
-	}
-	for i, v := range cols {
-		typeMap[v] = colTypes[i].ScanType()
-	}
 
 	for rows.Next() {
-		// cols, err := rows.Columns()
-		// if err != nil {
-		// 	log.WithError(err).Error("Failed to get columns")
-		// 	break
-		// }
-		//values := make([]interface{}, len(cols))
-		value := map[string]interface{}{}
-		//err = rows.Scan(values...)
-		err = rows.MapScan(value)
-		if err != nil {
-			log.WithError(err).Error("Failed to scan db")
-			break
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
 		}
 
-		convertedValue := map[string]otto.Value{}
+		if err := rows.Scan(columnPointers...); err != nil {
+			log.WithError(err).Error("Failed to scan")
+			return nil
+		}
 
-		for k, v := range value {
-			t := typeMap[k]
-			var cv otto.Value
-			fmt.Println("Type ", t.String())
-			switch t.String() {
-			case "int32":
-				cv, _ = otto.ToValue(v.(int32))
-			case "sql.NullInt64":
-				cv, _ = otto.ToValue(v.(sql.NullInt64))
-			case "sql.RawBytes":
-				cv, _ = otto.ToValue(v.(sql.RawBytes))
+		m := make(map[string]otto.Value)
+		for i, colName := range cols {
+			byteArray, ok := columns[i].([]byte)
+			if ok {
+				ottoVal, _ := otto.ToValue(string(byteArray))
+				m[colName] = ottoVal
+			} else {
+				ottoVal, _ := otto.ToValue(columns[i])
+				m[colName] = ottoVal
 			}
-
-			convertedValue[k] = cv
 		}
-		outputRows = append(outputRows, convertedValue)
+
+		outputRows = append(outputRows, m)
 	}
-	fmt.Println(outputRows)
 	return outputRows
 }
