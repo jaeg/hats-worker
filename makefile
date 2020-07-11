@@ -6,7 +6,6 @@
  GOGET=$(GOCMD) get
  BINARY_NAME=wart
  BINARY_UNIX=$(BINARY_NAME)_unix
- VERSION=0.1.0
 
  all: test build
  build:
@@ -29,3 +28,4 @@ publish:
 release:
 	docker tag jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)-$(shell git rev-parse --short HEAD) jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)
 	docker push jaeg/redis-wart:$(shell git describe --abbrev=0 --tags)
+	docker push jaeg/redis-wart:latest
