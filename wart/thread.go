@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//ThreadMeta struct that represents a thread
 type ThreadMeta struct {
 	Key     string
 	Stopped bool

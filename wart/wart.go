@@ -15,21 +15,36 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/robertkrimen/otto"
+
+	//This is how you import underscore
 	_ "github.com/robertkrimen/otto/underscore"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 )
 
 //Status Constants
+
+//DISABLED disabled
 const DISABLED = "disabled"
+
+//CRASHED crashed
 const CRASHED = "crashed"
+
+//ONLINE online
 const ONLINE = "online"
+
+//ENABLED enabled
 const ENABLED = "enabled"
+
+//STOPPED stopped
 const STOPPED = "stopped"
+
+//RUNNING running
 const RUNNING = "running"
 
 var ctx = context.Background()
 
+//Wart main structure for wart
 type Wart struct {
 	RedisAddr       string
 	RedisPassword   string
@@ -46,10 +61,12 @@ type Wart struct {
 	shuttingDown    bool
 }
 
+//TaskInterface Everything we do is a task.  This the interface.
 type TaskInterface interface {
 	getVM() *otto.Otto
 }
 
+//Create Creates a wart
 func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, hostPort string, healthPort string) (*Wart, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
@@ -138,6 +155,7 @@ func generateRandomName(length int) (out string) {
 	return
 }
 
+//Shutdown Shutsdown the wart by safely stopping threads
 func (w *Wart) Shutdown() {
 	w.shuttingDown = true
 	threads := getThreads(w)
@@ -174,6 +192,7 @@ func getJobs(w *Wart) map[string]*JobMeta {
 	return w.jobs
 }
 
+//IsEnabled Returns if the wart is enabled.
 func IsEnabled(w *Wart) bool {
 	status := w.Client.HGet(ctx, w.Cluster+":Warts:"+w.WartName, "Status").Val()
 	if w.shuttingDown || status == DISABLED {
@@ -182,6 +201,7 @@ func IsEnabled(w *Wart) bool {
 	return true
 }
 
+//CheckThreads Checks threads in redis for any that need ran.
 func CheckThreads(w *Wart) {
 	threads := getThreads(w)
 	for i := range threads {
@@ -215,6 +235,7 @@ func CheckThreads(w *Wart) {
 	}
 }
 
+//CheckJobs Checks redis for any jobs that need scheduled.
 func CheckJobs(w *Wart) {
 	jobs := getJobs(w)
 	for i := range jobs {
@@ -253,13 +274,13 @@ func loadScripts(w *Wart, scripts string) error {
 	return nil
 }
 
-func (wart *Wart) handleEndpoint(w http.ResponseWriter, r *http.Request) {
-	if wart.Healthy {
-		em := getEndpoint(wart, html.EscapeString(r.URL.Path))
+func (w *Wart) handleEndpoint(writer http.ResponseWriter, r *http.Request) {
+	if w.Healthy {
+		em := getEndpoint(w, html.EscapeString(r.URL.Path))
 		if em != nil {
-			em.run(wart, w, r)
+			em.run(w, writer, r)
 		} else {
-			http.Error(w, "Endpoint not found", http.StatusNotFound)
+			http.Error(writer, "Endpoint not found", http.StatusNotFound)
 		}
 	}
 }

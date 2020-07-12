@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//JobMeta Struct that represents a job.
 type JobMeta struct {
 	Key        string
 	Stopped    bool
