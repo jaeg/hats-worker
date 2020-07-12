@@ -50,7 +50,7 @@ type TaskInterface interface {
 	getVM() *otto.Otto
 }
 
-func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, healthPort string) (*Wart, error) {
+func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, hostPort string, healthPort string) (*Wart, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
 		if err == nil {
@@ -102,7 +102,7 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 
 	if host {
 		http.HandleFunc("/", w.handleEndpoint)
-		go func() { http.ListenAndServe(":9999", nil) }()
+		go func() { http.ListenAndServe(":"+hostPort, nil) }()
 	}
 
 	// create `ServerMux`
