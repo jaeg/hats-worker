@@ -1,4 +1,4 @@
-package wart
+package worker
 
 import (
 	"strconv"
@@ -19,50 +19,50 @@ func (tm *ThreadMeta) getVM() *otto.Otto {
 	return tm.vm
 }
 
-func (tm *ThreadMeta) getStatus(w *Wart) (status string) {
+func (tm *ThreadMeta) getStatus(w *worker) (status string) {
 	status = w.Client.HGet(ctx, tm.Key, "Status").Val()
 	return
 }
 
-func (tm *ThreadMeta) getState(w *Wart) (state string) {
+func (tm *ThreadMeta) getState(w *worker) (state string) {
 	state = w.Client.HGet(ctx, tm.Key, "State").Val()
 	return
 }
 
-func (tm *ThreadMeta) getSource(w *Wart) (source string) {
+func (tm *ThreadMeta) getSource(w *worker) (source string) {
 	source = w.Client.HGet(ctx, tm.Key, "Source").Val()
 	return
 }
 
-func (tm *ThreadMeta) getHeartBeat(w *Wart) (hb int, err error) {
+func (tm *ThreadMeta) getHeartBeat(w *worker) (hb int, err error) {
 	hbString := w.Client.HGet(ctx, tm.Key, "Heartbeat").Val()
 	hb, err = strconv.Atoi(hbString)
 
 	return
 }
 
-func (tm *ThreadMeta) getOwner(w *Wart) (owner string) {
+func (tm *ThreadMeta) getOwner(w *worker) (owner string) {
 	owner = w.Client.HGet(ctx, tm.Key, "Owner").Val()
 
 	return
 }
 
-func (tm *ThreadMeta) getDeadSeconds(w *Wart) (deadSeconds int, err error) {
+func (tm *ThreadMeta) getDeadSeconds(w *worker) (deadSeconds int, err error) {
 	deadSeconds, err = w.Client.HGet(ctx, tm.Key, "DeadSeconds").Int()
 	return
 }
 
-func (tm *ThreadMeta) take(w *Wart) {
+func (tm *ThreadMeta) take(w *worker) {
 	log.Info("Taking thread ", tm.Key)
 	tm.Stopped = false
 	w.Client.HSet(ctx, tm.Key, "State", RUNNING)
 	w.Client.HSet(ctx, tm.Key, "Heartbeat", time.Now().UnixNano())
-	w.Client.HSet(ctx, tm.Key, "Owner", w.WartName)
+	w.Client.HSet(ctx, tm.Key, "Owner", w.WorkerName)
 	go tm.run(w)
 }
 
-func (tm *ThreadMeta) stop(w *Wart) {
-	if tm.getOwner(w) == w.WartName && !tm.Stopped {
+func (tm *ThreadMeta) stop(w *worker) {
+	if tm.getOwner(w) == w.WorkerName && !tm.Stopped {
 		log.Info("Stopping thread ", tm.Key)
 		tm.Stopped = true
 		w.Client.HSet(ctx, tm.Key, "State", STOPPED)
@@ -75,8 +75,8 @@ func (tm *ThreadMeta) stop(w *Wart) {
 	}
 }
 
-func (tm *ThreadMeta) disable(w *Wart) {
-	if tm.getOwner(w) == w.WartName && !tm.Stopped {
+func (tm *ThreadMeta) disable(w *worker) {
+	if tm.getOwner(w) == w.WorkerName && !tm.Stopped {
 		log.Info("Disabling thread ", tm.Key)
 		tm.Stopped = true
 		w.Client.HSet(ctx, tm.Key, "State", STOPPED)
@@ -90,7 +90,7 @@ func (tm *ThreadMeta) disable(w *Wart) {
 	}
 }
 
-func (tm *ThreadMeta) run(w *Wart) {
+func (tm *ThreadMeta) run(w *worker) {
 	log.Info("Starting Thread ", tm.Key)
 
 	tm.vm = otto.New()
@@ -144,7 +144,7 @@ func (tm *ThreadMeta) run(w *Wart) {
 			}
 
 			//If we aren't the owner anymore don't run it.
-			if owner != w.WartName {
+			if owner != w.WorkerName {
 				tm.Stopped = true
 				continue
 			}

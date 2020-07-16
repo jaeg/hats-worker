@@ -1,20 +1,19 @@
-# redis-wart
-**W** - Widely  
-**A** - Accessible  
-**R** - Redis   
-**T** - Threading    
+# hats-worker
+**H** - Highly  
+**A** - Available  
+**T** - Tasking    
 **S** - System  
 A simple interpreter designed to process data sitting in redis.
 
-Each wart in a cluster checks in redis for work to do.  If it finds a stopped thread or a dead thread it takes the thread and runs it locally. There are also jobs which instead of continuously running they execute on a cron schedule.
+Each worker in a cluster checks in redis for work to do.  If it finds a stopped thread or a dead thread it takes the thread and runs it locally. There are also jobs which instead of continuously running they execute on a cron schedule.
 
 ## Runtime params
 - cluster-name - name of cluster   
-- wart-name - name of the wart   
+- worker-name - name of the worker   
 - redis-address - address to redis server  
 - redis-password - password for redis server   
 - scripts - scripts to register  
-- run-now - run registered scripts on this wart immediately
+- run-now - run registered scripts on this worker immediately
 
 ## Getting dependencies
 Requires a version of go that supports go.mod
@@ -26,17 +25,17 @@ Requires a version of go that supports go.mod
 - Build and run it
   - `make run`
 - You can get started using an example config as such
-  -  `./bin/wart --config wart1.config`
+  -  `./bin/worker --config worker1.config`
 - Or you can pass in through runtime params  
-  - `./bin/wart --redis-address=<address> --redis-password=<password> --wart-name=wart1`
+  - `./bin/worker --redis-address=<address> --redis-password=<password> --worker-name=worker1`
 - Or run through a docker container
-  - `docker run jaeg/redis-wart:latest --redis-address=<address> --redis-password=<password> --wart-name=wart1`
+  - `docker run jaeg/hats-worker:latest --redis-address=<address> --redis-password=<password> --worker-name=worker1`
 - You can also tell it to load a script on start like this
-  - `./bin/wart --redis-address=<address> --redis-password=<password> --wart-name=wart1 --scripts examples/hello.js`
-  - `docker run jaeg/redis-wart:latest --redis-address=<address> --redis-password=<password> --wart-name=wart1 --scripts examples/hello.js`
+  - `./bin/worker --redis-address=<address> --redis-password=<password> --worker-name=worker1 --scripts examples/hello.js`
+  - `docker run jaeg/hats-worker:latest --redis-address=<address> --redis-password=<password> --worker-name=worker1 --scripts examples/hello.js`
 
 ## Javascript implementation
-Wart's Javascript implementation is based on [Otto](https://github.com/robertkrimen/otto).  Each thread maintains its own scope.  When a thread starts it runs the entire script.  It then runs `init()` if present in the source code.  If present a thread will call `main()` after confirming the thread is still running.
+worker's Javascript implementation is based on [Otto](https://github.com/robertkrimen/otto).  Each thread maintains its own scope.  When a thread starts it runs the entire script.  It then runs `init()` if present in the source code.  If present a thread will call `main()` after confirming the thread is still running.
 
 ### Extra Functions Available to scripts
 #### Env
@@ -48,12 +47,12 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
   - returns null or error if there is one
 
 
-#### Wart
-- wart.Name
+#### worker
+- worker.Name
   - returns string
-- wart.Cluster
+- worker.Cluster
   - returns string
-- wart.ShuttingDown - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
+- worker.ShuttingDown - It is suggested that if you have code that loops you also check this to make sure the code end cleanly.
   - returns bool
 
 #### Thread
@@ -102,16 +101,16 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
 
 #### Response
 - response.Write(value)
-  - Used when a wart is in endpoint mode.  Writes to the response body of an http request.
+  - Used when a worker is in endpoint mode.  Writes to the response body of an http request.
   - returns nothing.
 - response.Error(errorString, statusCode)
-  - Used when a wart is in endpoint mode.  Writes an error in response to the endpoint.
+  - Used when a worker is in endpoint mode.  Writes an error in response to the endpoint.
   - returns nothing.  
 - response.SetContentType(type)
-  - Used when a wart is in endpoint mode.  Sets the content type header.
+  - Used when a worker is in endpoint mode.  Sets the content type header.
   - returns nothing.  
 - response.SetHeader(key,value)
-  - Used when a wart is in endpoint mode.  Sets the header specfied in key to the value.
+  - Used when a worker is in endpoint mode.  Sets the header specfied in key to the value.
   - returns nothing.  
 
 #### Request
@@ -124,7 +123,7 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
 - request.Body
   - returns string
 - request.GetHeader(key)
-  - Used when a wart is in endpoint mode.  Gets value from header.
+  - Used when a worker is in endpoint mode.  Gets value from header.
   - returns value.  
 
 #### SQL
@@ -141,10 +140,10 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
   - returns error if any
  
 
-### Wart Todo
+### worker Todo
 - [x] - Run a thread from redis.
 - [x] - Create thread from file.
-- [x] - Stop thread if wart is unhealthy.
+- [x] - Stop thread if worker is unhealthy.
 - [x] - Stop thread if status is disabled.
 - [x] - Stop thread if not the owner of thread.
 - [x] - CPU health check based on threshold.
@@ -156,6 +155,6 @@ Wart's Javascript implementation is based on [Otto](https://github.com/robertkri
 - [x] - Keep scope inside of thread
 - [x] - Redis wrapper
 - [x] - Http wrapper
-- [x] - Wart information i.e. Health, name, cluster
+- [x] - worker information i.e. Health, name, cluster
 - [x] - Thread information i.e. Delay, State, Status
 - [x] - Thread control i.e. Stop thread, disable thread.

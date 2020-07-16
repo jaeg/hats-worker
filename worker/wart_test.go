@@ -1,4 +1,4 @@
-package wart
+package worker
 
 import (
 	"testing"
@@ -9,14 +9,14 @@ import (
 )
 
 func TestStartErrorWithNoRedisAddress(t *testing.T) {
-	_, err := Create("", "", "", "TestCluster", "TestWart", "", false, "9999", "8787")
+	_, err := Create("", "", "", "TestCluster", "Testworker", "", false, "9999", "8787")
 	if err.Error() != "no redis address provided" {
 		t.Errorf("Did not fail due to no redis address.")
 	}
 }
 
 func TestStartErrorWithFailedPing(t *testing.T) {
-	_, err := Create("", "bad", "", "TestCluster", "TestWart", "", false, "9999", "8787")
+	_, err := Create("", "bad", "", "TestCluster", "Testworker", "", false, "9999", "8787")
 	if err.Error() != "redis failed ping" {
 		t.Errorf("Did not fail due to failed ping.")
 	}
@@ -24,16 +24,16 @@ func TestStartErrorWithFailedPing(t *testing.T) {
 
 func TestStartReturnsNilWhenSuccessful(t *testing.T) {
 	mr, _ := miniredis.Run()
-	_, err := Create("", mr.Addr(), "", "TestCluster", "TestWart", "", false, "9999", "8787")
+	_, err := Create("", mr.Addr(), "", "TestCluster", "Testworker", "", false, "9999", "8787")
 	if err != nil {
-		t.Errorf("Errored starting wart.")
+		t.Errorf("Errored starting worker.")
 	}
 }
 
 func TestStartHandlesScriptsPassedIn(t *testing.T) {
 	mr, _ := miniredis.Run()
 	scripts := "../examples/hello.txt"
-	_, err := Create("", mr.Addr(), "", "TestCluster", "TestWart", scripts, false, "9999", "8787")
+	_, err := Create("", mr.Addr(), "", "TestCluster", "Testworker", scripts, false, "9999", "8787")
 	if err != nil {
 		t.Errorf("Errored getting scripts")
 	}
@@ -42,7 +42,7 @@ func TestStartHandlesScriptsPassedIn(t *testing.T) {
 func TestStartErrorsIfItCanNotFindScript(t *testing.T) {
 	mr, _ := miniredis.Run()
 	scripts := "../examples/doesnotexist.txt"
-	_, err := Create("", mr.Addr(), "", "TestCluster", "TestWart", scripts, false, "9999", "8787")
+	_, err := Create("", mr.Addr(), "", "TestCluster", "Testworker", scripts, false, "9999", "8787")
 	if err == nil {
 		t.Errorf("Did not error getting scripts.")
 	}
@@ -55,7 +55,7 @@ func TestLoadScripts(t *testing.T) {
 		DB:   0, // use default DB
 	})
 
-	w := &Wart{RedisAddr: mr.Addr(), Client: client}
+	w := &worker{RedisAddr: mr.Addr(), Client: client}
 
 	err := loadScripts(w, "../examples/hello.txt")
 	if err != nil {
@@ -69,7 +69,7 @@ func TestLoadScriptsDoesNotExist(t *testing.T) {
 		Addr: mr.Addr(),
 		DB:   0, // use default DB
 	})
-	w := &Wart{RedisAddr: mr.Addr(), Client: client}
+	w := &worker{RedisAddr: mr.Addr(), Client: client}
 
 	err := loadScripts(w, "../examples/doesnotexist.txt")
 	if err == nil {

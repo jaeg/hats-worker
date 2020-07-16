@@ -1,4 +1,4 @@
-package wart
+package worker
 
 import (
 	"context"
@@ -44,12 +44,12 @@ const RUNNING = "running"
 
 var ctx = context.Background()
 
-//Wart main structure for wart
-type Wart struct {
+//worker main structure for worker
+type worker struct {
 	RedisAddr       string
 	RedisPassword   string
 	Cluster         string
-	WartName        string
+	WorkerName      string
 	ScriptList      string
 	Client          *redis.Client
 	Healthy         bool
@@ -66,8 +66,8 @@ type TaskInterface interface {
 	getVM() *otto.Otto
 }
 
-//Create Creates a wart
-func Create(configFile string, redisAddr string, redisPassword string, cluster string, wartName string, scriptList string, host bool, hostPort string, healthPort string) (*Wart, error) {
+//Create Creates a worker
+func Create(configFile string, redisAddr string, redisPassword string, cluster string, WorkerName string, scriptList string, host bool, hostPort string, healthPort string) (*worker, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
 		if err == nil {
@@ -78,17 +78,17 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 				redisAddr = m["redis-address"].(string)
 				redisPassword = m["redis-password"].(string)
 				cluster = m["cluster"].(string)
-				wartName = m["name"].(string)
+				WorkerName = m["name"].(string)
 				host = m["host"].(bool)
 			}
 		}
 	}
 
-	if len(wartName) == 0 {
-		wartName = generateRandomName(10)
+	if len(WorkerName) == 0 {
+		WorkerName = generateRandomName(10)
 	}
-	w := &Wart{RedisAddr: redisAddr, RedisPassword: redisPassword,
-		Cluster: cluster, WartName: wartName, ScriptList: scriptList,
+	w := &worker{RedisAddr: redisAddr, RedisPassword: redisPassword,
+		Cluster: cluster, WorkerName: WorkerName, ScriptList: scriptList,
 		Healthy: true, SecondsTillDead: 1}
 
 	if w.RedisAddr == "" {
@@ -107,8 +107,8 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 		return nil, errors.New("redis failed ping")
 	}
 
-	w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "State", ONLINE)
-	w.Client.HSet(ctx, w.Cluster+":Warts:"+w.WartName, "Status", ENABLED)
+	w.Client.HSet(ctx, w.Cluster+":workers:"+w.WorkerName, "State", ONLINE)
+	w.Client.HSet(ctx, w.Cluster+":workers:"+w.WorkerName, "Status", ENABLED)
 
 	if w.ScriptList != "" {
 		err := loadScripts(w, w.ScriptList)
@@ -155,8 +155,8 @@ func generateRandomName(length int) (out string) {
 	return
 }
 
-//Shutdown Shutsdown the wart by safely stopping threads
-func (w *Wart) Shutdown() {
+//Shutdown Shutsdown the worker by safely stopping threads
+func (w *worker) Shutdown() {
 	w.shuttingDown = true
 	threads := getThreads(w)
 	for i := range threads {
@@ -164,7 +164,7 @@ func (w *Wart) Shutdown() {
 	}
 }
 
-func getThreads(w *Wart) map[string]*ThreadMeta {
+func getThreads(w *worker) map[string]*ThreadMeta {
 	keys := w.Client.Keys(ctx, w.Cluster+":Threads:*").Val()
 	if w.threads == nil {
 		w.threads = make(map[string]*ThreadMeta, 0)
@@ -178,7 +178,7 @@ func getThreads(w *Wart) map[string]*ThreadMeta {
 	return w.threads
 }
 
-func getJobs(w *Wart) map[string]*JobMeta {
+func getJobs(w *worker) map[string]*JobMeta {
 	keys := w.Client.Keys(ctx, w.Cluster+":Jobs:*").Val()
 	if w.jobs == nil {
 		w.jobs = make(map[string]*JobMeta, 0)
@@ -192,9 +192,9 @@ func getJobs(w *Wart) map[string]*JobMeta {
 	return w.jobs
 }
 
-//IsEnabled Returns if the wart is enabled.
-func IsEnabled(w *Wart) bool {
-	status := w.Client.HGet(ctx, w.Cluster+":Warts:"+w.WartName, "Status").Val()
+//IsEnabled Returns if the worker is enabled.
+func IsEnabled(w *worker) bool {
+	status := w.Client.HGet(ctx, w.Cluster+":workers:"+w.WorkerName, "Status").Val()
 	if w.shuttingDown || status == DISABLED {
 		return false
 	}
@@ -202,7 +202,7 @@ func IsEnabled(w *Wart) bool {
 }
 
 //CheckThreads Checks threads in redis for any that need ran.
-func CheckThreads(w *Wart) {
+func CheckThreads(w *worker) {
 	threads := getThreads(w)
 	for i := range threads {
 		threadStatus := threads[i].getStatus(w)
@@ -236,7 +236,7 @@ func CheckThreads(w *Wart) {
 }
 
 //CheckJobs Checks redis for any jobs that need scheduled.
-func CheckJobs(w *Wart) {
+func CheckJobs(w *worker) {
 	jobs := getJobs(w)
 	for i := range jobs {
 		jobStatus := jobs[i].getStatus(w)
@@ -250,7 +250,7 @@ func CheckJobs(w *Wart) {
 	}
 }
 
-func loadScripts(w *Wart, scripts string) error {
+func loadScripts(w *worker, scripts string) error {
 	scriptArray := strings.Split(scripts, ",")
 	for i := range scriptArray {
 		scriptName := scriptArray[i]
@@ -274,7 +274,7 @@ func loadScripts(w *Wart, scripts string) error {
 	return nil
 }
 
-func (w *Wart) handleEndpoint(writer http.ResponseWriter, r *http.Request) {
+func (w *worker) handleEndpoint(writer http.ResponseWriter, r *http.Request) {
 	if w.Healthy {
 		em := getEndpoint(w, html.EscapeString(r.URL.Path))
 		if em != nil {
@@ -285,7 +285,7 @@ func (w *Wart) handleEndpoint(writer http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func applyLibrary(w *Wart, tm TaskInterface) {
+func applyLibrary(w *worker, tm TaskInterface) {
 	tm.getVM().Set("redis", map[string]interface{}{
 		"Do2": w.Client.Do,
 		"Do": func(call otto.FunctionCall) otto.Value {
@@ -326,8 +326,8 @@ func applyLibrary(w *Wart, tm TaskInterface) {
 		"New": newSQLWrapper,
 	})
 
-	tm.getVM().Set("wart", map[string]interface{}{
-		"Name":         w.WartName,
+	tm.getVM().Set("worker", map[string]interface{}{
+		"Name":         w.WorkerName,
 		"Cluster":      w.Cluster,
 		"ShuttingDown": w.Shutdown,
 	})

@@ -1,4 +1,4 @@
-package wart
+package worker
 
 import (
 	"database/sql"

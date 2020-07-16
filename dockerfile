@@ -1,4 +1,4 @@
 FROM centos
-COPY ./bin/wart_unix /
+COPY ./bin/hats-worker_unix /
 
-ENTRYPOINT ["/wart_unix"]
+ENTRYPOINT ["/hats-worker_unix"]

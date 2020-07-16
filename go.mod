@@ -1,4 +1,4 @@
-module github.com/jaeg/redis-wart
+module github.com/jaeg/hats-worker
 
 go 1.14
 

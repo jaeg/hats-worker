@@ -1,4 +1,4 @@
-package wart
+package worker
 
 import (
 	"strconv"
@@ -22,40 +22,40 @@ func (jm *JobMeta) getVM() *otto.Otto {
 	return jm.vm
 }
 
-func (jm *JobMeta) getStatus(w *Wart) (status string) {
+func (jm *JobMeta) getStatus(w *worker) (status string) {
 	status = w.Client.HGet(ctx, jm.Key, "Status").Val()
 	return
 }
 
-func (jm *JobMeta) getCron(w *Wart) (status string) {
+func (jm *JobMeta) getCron(w *worker) (status string) {
 	status = w.Client.HGet(ctx, jm.Key, "Cron").Val()
 	return
 }
 
-func (jm *JobMeta) getState(w *Wart) (state string) {
+func (jm *JobMeta) getState(w *worker) (state string) {
 	state = w.Client.HGet(ctx, jm.Key, "State").Val()
 	return
 }
 
-func (jm *JobMeta) getSource(w *Wart) (source string) {
+func (jm *JobMeta) getSource(w *worker) (source string) {
 	source = w.Client.HGet(ctx, jm.Key, "Source").Val()
 	return
 }
 
-func (jm *JobMeta) getHeartBeat(w *Wart) (hb int, err error) {
+func (jm *JobMeta) getHeartBeat(w *worker) (hb int, err error) {
 	hbString := w.Client.HGet(ctx, jm.Key, "Heartbeat").Val()
 	hb, err = strconv.Atoi(hbString)
 
 	return
 }
 
-func (jm *JobMeta) getOwner(w *Wart) (owner string) {
+func (jm *JobMeta) getOwner(w *worker) (owner string) {
 	owner = w.Client.HGet(ctx, jm.Key, "Owner").Val()
 
 	return
 }
 
-func (jm *JobMeta) schedule(w *Wart) {
+func (jm *JobMeta) schedule(w *worker) {
 	if jm.cron == nil || jm.cronString != jm.getCron(w) {
 		log.Info("Setting up job cron for ", jm.Key, " cron: ", jm.getCron(w))
 		jm.cron = newWithSeconds()
@@ -67,8 +67,8 @@ func (jm *JobMeta) schedule(w *Wart) {
 	}
 }
 
-func (jm *JobMeta) disable(w *Wart) {
-	if jm.getOwner(w) == w.WartName && !jm.Stopped {
+func (jm *JobMeta) disable(w *worker) {
+	if jm.getOwner(w) == w.WorkerName && !jm.Stopped {
 		log.Info("Disabling thread ", jm.Key)
 		jm.Stopped = true
 		w.Client.HSet(ctx, jm.Key, "State", STOPPED)
@@ -82,7 +82,7 @@ func (jm *JobMeta) disable(w *Wart) {
 	}
 }
 
-func (jm *JobMeta) run(w *Wart) {
+func (jm *JobMeta) run(w *worker) {
 	log.Info("Starting job ", jm.Key)
 	if jm.getStatus(w) == DISABLED {
 		jm.cron.Stop()
@@ -93,7 +93,7 @@ func (jm *JobMeta) run(w *Wart) {
 		jm.Stopped = false
 		w.Client.HSet(ctx, jm.Key, "State", RUNNING)
 		w.Client.HSet(ctx, jm.Key, "Heartbeat", time.Now().UnixNano())
-		w.Client.HSet(ctx, jm.Key, "Owner", w.WartName)
+		w.Client.HSet(ctx, jm.Key, "Owner", w.WorkerName)
 
 		jm.vm = otto.New()
 		jm.vm.Interrupt = make(chan func(), 1)
@@ -105,7 +105,7 @@ func (jm *JobMeta) run(w *Wart) {
 		}
 
 		//Check one last time to make sure someone didn't beat us.
-		if jm.getOwner(w) == w.WartName {
+		if jm.getOwner(w) == w.WorkerName {
 			//Get whole script in memory.
 			_, err := jm.vm.Run(source)
 			if err != nil {

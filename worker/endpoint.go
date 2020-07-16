@@ -1,4 +1,4 @@
-package wart
+package worker
 
 import (
 	"fmt"
@@ -23,12 +23,12 @@ func (em *EndpointMeta) getVM() *otto.Otto {
 	return em.vm
 }
 
-func (em *EndpointMeta) getSource(w *Wart) (source string) {
+func (em *EndpointMeta) getSource(w *worker) (source string) {
 	source = w.Client.HGet(ctx, em.Key, "Source").Val()
 	return
 }
 
-func getEndpoint(w *Wart, path string) (em *EndpointMeta) {
+func getEndpoint(w *worker, path string) (em *EndpointMeta) {
 	em = &EndpointMeta{}
 	em.Key = w.Cluster + ":Endpoints:" + html.EscapeString(path)
 	if em.getSource(w) == "" {
@@ -41,8 +41,8 @@ func getEndpoint(w *Wart, path string) (em *EndpointMeta) {
 	return
 }
 
-func (em *EndpointMeta) run(wart *Wart, w http.ResponseWriter, r *http.Request) {
-	source := em.getSource(wart)
+func (em *EndpointMeta) run(worker *worker, w http.ResponseWriter, r *http.Request) {
+	source := em.getSource(worker)
 	output := ""
 	if source != "" {
 		b, _ := ioutil.ReadAll(r.Body)
@@ -83,8 +83,8 @@ func (em *EndpointMeta) run(wart *Wart, w http.ResponseWriter, r *http.Request) 
 				_, err := em.vm.Run(script)
 
 				if err != nil {
-					wart.Client.HSet(ctx, em.Key, "Error", err.Error())
-					wart.Client.HSet(ctx, em.Key, "ErrorTime", time.Now())
+					worker.Client.HSet(ctx, em.Key, "Error", err.Error())
+					worker.Client.HSet(ctx, em.Key, "ErrorTime", time.Now())
 					log.WithError(err).Error("Syntax error in script.")
 					errorThrown = true
 					http.Error(w, err.Error(), http.StatusInternalServerError)
