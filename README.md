@@ -34,6 +34,13 @@ Requires a version of go that supports go.mod
   - `./bin/worker --redis-address=<address> --redis-password=<password> --worker-name=worker1 --scripts examples/hello.js`
   - `docker run jaeg/hats-worker:latest --redis-address=<address> --redis-password=<password> --worker-name=worker1 --scripts examples/hello.js`
 
+## Hatter
+Hatter is a tool used to deploy and maintain a HATS cluster.
+https://github.com/jaeg/hatter
+
+## Example Environment to deploy
+https://github.com/jaeg/eliza_hats
+
 ## Javascript implementation
 worker's Javascript implementation is based on [Otto](https://github.com/robertkrimen/otto).  Each thread maintains its own scope.  When a thread starts it runs the entire script.  It then runs `init()` if present in the source code.  If present a thread will call `main()` after confirming the thread is still running.
 
